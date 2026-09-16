@@ -9,6 +9,8 @@ project with a different agent session. This does.
 It is a tray app. There is no window, no shell profile to edit, nothing to add to
 your dotfiles, and no scheduled task.
 
+![Terminal Session Keeper tray menu](TerminalSessionKeeper-Tray.png)
+
 ---
 
 ## Download
@@ -79,6 +81,8 @@ Four things and an exit. Everything else lives in one of the two windows.
 | **Exit** | |
 
 ### Settings
+
+![Terminal Session Keeper settings](TerminalSessionKeeper-Settings.png)
 
 | | |
 |---|---|
