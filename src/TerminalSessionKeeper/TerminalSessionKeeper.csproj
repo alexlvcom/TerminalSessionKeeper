@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Tab titles are readable only through UI Automation, and System.Windows.Automation
+         ships in the WPF framework reference. The COM IUIAutomation interfaces would avoid
+         it, but hand-declared vtables are a crash away from a wrong slot; the managed
+         wrapper is the one the reference implementation proved on this machine. -->
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>TerminalSessionKeeper</RootNamespace>
+    <AssemblyName>TerminalSessionKeeper</AssemblyName>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <!-- Marketing version: bump the first three parts when Changelog.cs gains an entry. -->
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <!-- Wildcard build/revision auto-changes on every build (needs Deterministic=false),
+         so the About window shows a distinct version per build. -->
+    <AssemblyVersion>1.0.*</AssemblyVersion>
+    <Deterministic>false</Deterministic>
+    <!-- CS7035: the wildcard above is deliberate, so silence the "recommended format" advice
+         rather than letting TreatWarningsAsErrors fail the build on it. -->
+    <NoWarn>$(NoWarn);CS7035</NoWarn>
+    <!-- Must be pinned: without it the SDK derives FileVersion from AssemblyVersion and the
+         literal "1.0.*" ends up in the Win32 version resource. -->
+    <FileVersion>1.0.0.0</FileVersion>
+    <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
+         see AppInfo.cs. -->
+    <Product>Terminal Session Keeper</Product>
+    <AssemblyTitle>Terminal Session Keeper</AssemblyTitle>
+    <Authors>Alex LV</Authors>
+    <Company>Alex LV</Company>
+    <Copyright>Copyright © 2026 Alex LV</Copyright>
+    <Description>Saves open Windows Terminal tabs, including live claude and codex sessions, and rebuilds them after a restart.</Description>
+    <DebugType>embedded</DebugType>
+
+    <!-- Idle cost: the app only works on a UI event or a timer tick, so a non-concurrent
+         workstation GC keeps the resident set and background threads minimal. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- SQLite ships as a native library. A single-file publish leaves native libraries beside
+         the executable unless this is set, and the app is meant to be one file you can copy
+         anywhere — without it, codex sessions fail to resolve on the deployed build only. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Codex keeps its resumable threads in SQLite; there is no way to read them without a
+         SQLite engine, and the bundled native provider keeps the app self-contained. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The WinForms implicit-using set replaces the SDK default rather than adding to it, and
+         drops System.IO with it. Nearly everything here touches the file system. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Resources\app.ico" />
+    <!-- The WSL side has to be walked from inside the distro (/proc, and the Linux codex
+         state), so the probe is carried in the executable and staged into the distro on
+         each snapshot. Nothing is installed into the user's dotfiles. -->
+    <EmbeddedResource Include="Terminal\snapshot-agents.py" />
+  </ItemGroup>
+
+</Project>

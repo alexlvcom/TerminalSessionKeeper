@@ -1,0 +1,58 @@
+## Build output
+bin/
+obj/
+publish/
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## .NET
+project.lock.json
+project.fragment.lock.json
+.packages/
+*.nuget.props
+*.nuget.targets
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+## Test and coverage output
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+*.trx
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+## Machine-specific local deploy target
+.ai-metadata.env
+
+## Local registry exports captured while investigating (never commit user registry data)
+*.reg
+!docs/**/*.reg
+
+## Porting notes and the PowerShell/Python original this was ported from.
+## Kept locally as the working record; not part of the published project.
+PORTING.md
+reference/
