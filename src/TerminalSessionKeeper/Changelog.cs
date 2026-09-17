@@ -12,7 +12,7 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
-        ("1.0.1", "2026-09-17", new[]
+        ("1.1.0", "2026-09-17", new[]
         {
             "A restored tab colour can be cleared again. Windows Terminal keeps two colours per",
             "     tab — the one the command line sets and the one the right-click picker sets on",
