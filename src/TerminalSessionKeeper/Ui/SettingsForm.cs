@@ -24,6 +24,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _autoResume;
     private readonly CheckBox _pinTitles;
     private readonly CheckBox _sampleColors;
+    private readonly CheckBox _restoreColors;
     private readonly CheckBox _notifications;
     private readonly CheckBox _startWithWindows;
     private readonly TextBox _windowName;
@@ -65,6 +66,8 @@ public sealed class SettingsForm : Form
 
         _sampleColors = Check("Remember tab colours", settings.SampleTabColors);
 
+        _restoreColors = Check("Put tab colours back when tabs are rebuilt", settings.RestoreTabColors);
+
         _notifications = Check("Show a notification after a snapshot or restore",
             settings.ShowBalloonNotifications);
 
@@ -98,7 +101,9 @@ public sealed class SettingsForm : Form
             _autoResume,
             Note("Off by default: a dozen agents and their MCP servers all starting at once, " +
                  "right after a reboot, is rarely what you want."),
-            Row("Rebuild tabs into a window named", _windowName, string.Empty)));
+            Row("Rebuild tabs into a new window named", _windowName, string.Empty),
+            Note("Every restore opens its own window and the name carries the time it ran, so a " +
+                 "restore never adds its tabs to the window an earlier one built.")));
 
         tabs.TabPages.Add(Page("Appearance",
             _pinTitles,
@@ -107,8 +112,13 @@ public sealed class SettingsForm : Form
             _sampleColors,
             Note("Windows Terminal exposes no API for tab colours, so the window is asked to " +
                  "render itself and the colour is read from the tab's own pixels — which works " +
-                 "even while the terminal is behind other windows. A minimized window cannot be " +
-                 "read, and its colours carry over from the previous snapshot instead.")));
+                 "even while the terminal is behind other windows. A colour has to be read the " +
+                 "same twice before it is kept, so a new one takes a snapshot longer to stick."),
+            _restoreColors,
+            Note("A restored colour is applied the way the colour picker applies one, so the " +
+                 "picker's Reset clears it again. That takes a setTabColor action, which lives " +
+                 "in Windows Terminal's settings.json for the second or two it is needed and is " +
+                 "removed straight afterwards.")));
 
         tabs.TabPages.Add(Page("General",
             _notifications,
@@ -228,6 +238,7 @@ public sealed class SettingsForm : Form
         _settings.AutoResume = _autoResume.Checked;
         _settings.PinTitles = _pinTitles.Checked;
         _settings.SampleTabColors = _sampleColors.Checked;
+        _settings.RestoreTabColors = _restoreColors.Checked;
         _settings.ShowBalloonNotifications = _notifications.Checked;
 
         var windowName = _windowName.Text.Trim();

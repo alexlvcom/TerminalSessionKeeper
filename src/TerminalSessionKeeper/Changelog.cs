@@ -12,6 +12,37 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.0.1", "2026-09-17", new[]
+        {
+            "A restored tab colour can be cleared again. Windows Terminal keeps two colours per",
+            "     tab — the one the command line sets and the one the right-click picker sets on",
+            "     top of it — and the picker's Reset clears only the second, so a colour restored",
+            "     with --tabColor came straight back every time it was cleared. Colours are now",
+            "     applied the way the picker applies them, through the setTabColor action, which",
+            "     means lending Windows Terminal that action on an F13-and-up key for the second",
+            "     or two it takes to press it. The entries are removed by id afterwards, and by",
+            "     the next start if the app is killed mid-restore.",
+            "Tabs no longer pick up colours they never had. The sampler was reading its own",
+            "     output: a restored colour is sampled again on the next snapshot, and un-blending",
+            "     multiplies a rounding error by more than three, so colours drifted until they",
+            "     saturated — #DD153D became #FF0051, another tab sank to black, and a plain tab",
+            "     acquired a grey. A colour now has to be read the same way twice before it is",
+            "     recorded, a reading close to the colour on file leaves it alone, and a colour",
+            "     read as cleared twice is forgotten — so clearing one in the terminal sticks.",
+            "A frame the two background readings disagree about is no longer read at all. One",
+            "     bad frame that reported the tab strip as black had invented a colour for every",
+            "     uncoloured tab in the window at once.",
+            "A tab scrolled out of an overflowing tab strip is skipped rather than sampled from",
+            "     the sliver of it still on screen.",
+            "New setting, 'Put tab colours back when tabs are rebuilt', on by default. Turn it",
+            "     off to leave restored tabs uncoloured and Windows Terminal's settings untouched.",
+            "A restore builds a window of its own again. Every restore aimed at one fixed window",
+            "     name, and wt.exe adds a tab to a window that already has that name rather than",
+            "     making one — so the second restore appended its tabs to the window the first had",
+            "     built, however many days earlier. The configured name is now the prefix and the",
+            "     time the restore ran completes it.",
+        }),
+
         ("1.0.0", "2026-09-16", new[]
         {
             "Initial release. Saves the open Windows Terminal tabs — including the live",

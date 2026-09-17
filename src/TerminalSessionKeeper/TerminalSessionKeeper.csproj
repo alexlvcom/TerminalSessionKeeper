@@ -17,7 +17,7 @@
     <AssemblyName>TerminalSessionKeeper</AssemblyName>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <!-- Marketing version: bump the first three parts when Changelog.cs gains an entry. -->
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionPrefix>1.0.1</VersionPrefix>
     <!-- Wildcard build/revision auto-changes on every build (needs Deterministic=false),
          so the About window shows a distinct version per build. -->
     <AssemblyVersion>1.0.*</AssemblyVersion>
@@ -27,7 +27,7 @@
     <NoWarn>$(NoWarn);CS7035</NoWarn>
     <!-- Must be pinned: without it the SDK derives FileVersion from AssemblyVersion and the
          literal "1.0.*" ends up in the Win32 version resource. -->
-    <FileVersion>1.0.0.0</FileVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
          see AppInfo.cs. -->
     <Product>Terminal Session Keeper</Product>

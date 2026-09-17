@@ -40,6 +40,7 @@ public sealed class SnapshotService
     private readonly WtProfiles _profiles;
     private readonly TerminalWindows _windows;
     private readonly TabColorSampler _colors;
+    private readonly TabColorMemory _colorMemory;
 
     public SnapshotService(
         ILog log,
@@ -48,7 +49,8 @@ public sealed class SnapshotService
         WslProbe wslProbe,
         WtProfiles profiles,
         TerminalWindows windows,
-        TabColorSampler colors)
+        TabColorSampler colors,
+        TabColorMemory colorMemory)
     {
         _log = log;
         _store = store;
@@ -57,6 +59,7 @@ public sealed class SnapshotService
         _profiles = profiles;
         _windows = windows;
         _colors = colors;
+        _colorMemory = colorMemory;
     }
 
     /// <summary>Builds a snapshot without writing it. Used by the restore preview and by tests.</summary>
@@ -122,6 +125,8 @@ public sealed class SnapshotService
                 Tabs = tabs,
             });
         }
+
+        if (sampleColors) _colorMemory.Save();
 
         snapshot.UnmatchedTabTitles = unmatched
             .Distinct(StringComparer.Ordinal)
@@ -296,6 +301,11 @@ public sealed class SnapshotService
     /// Attaches each sampled colour to the record the matcher paired that on-screen tab with.
     /// Position would be the wrong key — a dragged tab keeps its colour and its title but not
     /// its place — so the colour rides along with the title's own pairing.
+    ///
+    /// Nothing sampled goes straight into the snapshot. Every reading is filed with
+    /// <see cref="TabColorMemory"/> first, which answers with the colour that has been read
+    /// twice; a window the sampler would not vouch for is not filed at all, because "could not
+    /// read this window" and "these tabs have no colour" must not be confused.
     /// </summary>
     private void ApplyColors(IReadOnlyList<TabRecord> tabs, IReadOnlyList<TerminalWindow> windows,
         IReadOnlyDictionary<int, int> pairing)
@@ -303,19 +313,38 @@ public sealed class SnapshotService
         if (pairing.Count == 0) return;
 
         // One flat list, in the same order the titles were flattened into.
-        var sampled = windows.SelectMany(_colors.Sample).ToList();
+        var scans = windows.Select(_colors.Sample).ToList();
+        var sampled = scans
+            .SelectMany(scan => scan.Colors.Select(color => (scan.Read, Color: color)))
+            .ToList();
 
         foreach (var (tabIndex, titleIndex) in pairing)
         {
             if (titleIndex >= sampled.Count) continue;
-            if (sampled[titleIndex] is not { } color) continue;
 
-            // A colour pinned in overrides.json is the user's decision and outranks the screen.
-            if (string.IsNullOrEmpty(tabs[tabIndex].Color)) tabs[tabIndex].Color = color;
+            var tab = tabs[tabIndex];
+
+            // A colour pinned in overrides.json is the user's decision and outranks the screen —
+            // and counts as proven, so the app reading back the colour it applied itself is not
+            // mistaken for the user having just changed it.
+            if (!string.IsNullOrEmpty(tab.Color))
+            {
+                if (!string.IsNullOrEmpty(tab.WtSession)) _colorMemory.Confirm(tab.WtSession, tab.Color);
+                continue;
+            }
+
+            var (read, color) = sampled[titleIndex];
+            if (!read) continue;
+
+            // Without WT_SESSION there is nothing to file a reading against across snapshots,
+            // so there is no way to confirm it. Left uncoloured rather than guessed at.
+            if (string.IsNullOrEmpty(tab.WtSession)) continue;
+
+            tab.Color = _colorMemory.Observe(tab.WtSession, color);
         }
     }
 
-    private static void ApplyFallbacks(TabRecord tab, IReadOnlyDictionary<string, TabRecord> previous)
+    private void ApplyFallbacks(TabRecord tab, IReadOnlyDictionary<string, TabRecord> previous)
     {
         // WT_SESSION is stable for the life of a tab, so a snapshot taken when UI Automation
         // could not reach the window — or when the window was covered — keeps whatever an
@@ -323,10 +352,14 @@ public sealed class SnapshotService
         if (!string.IsNullOrEmpty(tab.WtSession) && previous.TryGetValue(tab.WtSession, out var earlier))
         {
             if (string.IsNullOrEmpty(tab.Title)) tab.Title = earlier.Title;
+        }
 
-            // Colour especially: the active tab's colour cannot be told apart from the terminal
-            // background, so it is carried from a snapshot where the tab was not the active one.
-            if (string.IsNullOrEmpty(tab.Color)) tab.Color = earlier.Color;
+        // Colour comes from the confirmed history rather than the last snapshot: a snapshot taken
+        // while the window was minimized has no colours in it at all, and the active tab's colour
+        // cannot always be told apart from the terminal background.
+        if (string.IsNullOrEmpty(tab.Color) && !string.IsNullOrEmpty(tab.WtSession))
+        {
+            tab.Color = _colorMemory.Confirmed(tab.WtSession);
         }
 
         if (string.IsNullOrEmpty(tab.Title)) tab.Title = tab.FolderName;

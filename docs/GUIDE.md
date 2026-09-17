@@ -84,10 +84,16 @@ Four things and an exit. Everything else lives in one of the two windows.
 | **Run each resume command** | Off by default — see [What a restored tab looks like](#what-a-restored-tab-looks-like) |
 | **Keep saved tab titles** | Freeze restored titles instead of letting the shell rename them |
 | **Remember tab colours** | See [Titles and colours](#titles-and-colours) |
+| **Put tab colours back** | Applied the way the colour picker applies one, so Reset still clears it |
 | **Show a notification** | After a snapshot or a restore |
 | **Start with Windows** | `HKCU\...\CurrentVersion\Run`. No elevation, no scheduled task |
 
 ## What a restored tab looks like
+
+A restore always builds a **new window** and puts the tabs in it. The name under
+**Rebuild tabs into a new window named** is the prefix, and the time the restore ran
+is added to it — `wt -w <name>` joins a window that already has that name, so a fixed
+one made every later restore append its tabs to the window the first one built.
 
 Each tab comes back in its own directory with its resume command **waiting at the
 prompt**:
@@ -129,10 +135,40 @@ the tab's own pixels. That works while the terminal is behind other windows — 
 usually is when the snapshot timer fires — because the window draws itself rather
 than being grabbed off the screen.
 
-A *minimized* window has nothing to draw, and its colours carry forward from the
-previous snapshot instead. Anything uncertain is recorded as no colour rather than
-as a guess, since a wrong colour would be reapplied on every restore. Turn the whole
-thing off with **Remember tab colours** if you would rather it never looked.
+A colour has to be read the same way **twice in a row** before it is recorded, and a
+reading close to the colour already on file leaves that colour alone. Both rules
+exist because the sampler reads its own output: a restored colour is sampled again on
+the next snapshot, and un-blending multiplies a rounding error by more than three, so
+without them a tab drifts a little further every cycle until it saturates — which is
+how a crimson tab once walked to `#FF0051` and a plain one picked up a grey it never
+had. The cost is that a colour you set by hand takes one extra snapshot to stick, and
+a colour you clear takes one extra snapshot to disappear.
+
+A *minimized* window has nothing to draw, and its colours carry forward instead.
+Anything uncertain — a frame the two background readings disagree about, a tab
+scrolled out of an overflowing strip — is recorded as no colour rather than as a
+guess. Turn the whole thing off with **Remember tab colours** if you would rather it
+never looked.
+
+**Putting a colour back** is not `wt --tabColor`, deliberately. Windows Terminal keeps
+two colours per tab: the one the command line sets, and the one the right-click colour
+picker sets on top of it. The picker's **Reset** clears only the second — so a tab
+coloured from the command line snaps back to that colour every time you try to clear
+it, and nothing short of closing the tab is rid of it.
+
+So a restored colour is applied the way the picker applies one, with Windows Terminal's
+`setTabColor` action. Actions can only be reached by a key, so the restore adds one to
+`settings.json`, bound to F13 upwards — keys no keyboard can produce, so nothing you
+press can collide with one — focuses each tab, presses it, and takes the action back
+out. Your file is left as it was, and the entries are removed by id, so an edit
+Windows Terminal or you made in between is never clobbered. If the app is killed
+mid-restore, the next start removes them.
+
+Nothing is pressed on trust: each keystroke waits for UI Automation to confirm that the
+intended tab is selected in the window the restore built. If the window cannot be
+brought to the front — Windows refuses that while you are busy in another application —
+the colour is skipped and the log says so. Turn it off with **Put tab colours back** and
+restored tabs come back uncoloured, with Windows Terminal's settings never touched.
 
 ### Pinning a title or colour by hand
 
@@ -184,8 +220,9 @@ rebuild twenty tabs instead of ten. Each snapshot records the machine's boot tim
 the app can tell "the session these tabs belonged to is gone" from "the user is
 still sitting in it".
 
-Restoring by hand while a window is open is allowed — it asks first, and says
-exactly what will happen.
+Restoring by hand while a window is open is allowed — it asks first, says exactly
+what will happen, and the rebuilt tabs go into a window of their own rather than
+joining the one already on screen.
 
 ## Where your data lives
 
@@ -196,6 +233,7 @@ Everything lives in `%LocalAppData%\TerminalSessionKeeper`:
 | `Snapshots\` | The saved tab sets, plain JSON |
 | `settings.json` | Your settings |
 | `overrides.json` | Hand-pinned titles and colours |
+| `tab-colors.json` | What the colour sampler has read per tab, and what it has confirmed |
 | `Logs\terminalsessionkeeper.log` | Rotating log |
 
 Uninstalling is deleting the exe and that folder.
@@ -209,7 +247,9 @@ Uninstalling is deleting the exe and that folder.
 | A restored tab has no command at its prompt | Its shell took longer than expected to start. The log names the tab |
 | Some titles are missing | UI Automation could not reach the window. Titles from an earlier snapshot of the same tab are reused |
 | A title could not be attributed | Listed under "could not be attributed" — pin it in `overrides.json` |
-| Tab colours are missing | The window was minimized when the snapshot ran. They come back on the next snapshot taken with it open, or pin them in `overrides.json` |
+| Tab colours are missing | The window was minimized when the snapshot ran, or the colour has only been read once so far. They come back on the next snapshot taken with the window open, or pin them in `overrides.json` |
+| A restored tab came back uncoloured | The rebuilt window could not be brought to the front to press the colour key at — it happens when you are working in another application during a manual restore. The log names the tab |
+| A tab colour is wrong | Clear it in the terminal (right-click → Color… → **Reset**); two snapshots later the app forgets it too. A colour pinned in `overrides.json` has to be removed there |
 
 The **Snapshots** window prints exactly what was captured, and **Preview restore**
 prints exactly what would be launched. Between those two, most problems are visible

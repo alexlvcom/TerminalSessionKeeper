@@ -53,9 +53,15 @@ internal static class Program
             new WslProbe(log),
             new WtProfiles(log),
             new TerminalWindows(log),
-            new TabColorSampler(log));
+            new TabColorSampler(log),
+            new TabColorMemory(log));
 
         var restoreService = new RestoreService(log);
+
+        // A restore lends Windows Terminal a setTabColor action for a moment and takes it back
+        // out. If the app was killed in that moment, the action is still in the user's
+        // settings.json; this is where it goes.
+        new TabColorApplier(log).RevertLeftovers();
         var startupManager = new StartupManager(log);
 
         Application.ThreadException += (_, e) => log.Error("Unhandled UI exception.", e.Exception);

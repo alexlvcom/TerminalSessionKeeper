@@ -20,11 +20,11 @@ src/TerminalSessionKeeper/
   Agents/     per-agent session discovery (Claude, Codex, Antigravity, Junie) and the WSL probe
   Matching/   title tokenizing and the tab/title matcher
   Model/      snapshot records
-  Native/     ConPTY input injection, PEB reads, process-tree walking
-  Restore/    rebuilding a window from a snapshot
+  Native/     ConPTY input injection, keystrokes, PEB reads, process-tree walking
+  Restore/    rebuilding a window from a snapshot, and colouring its tabs
   Services/   paths, startup registration
   Settings/   settings model and store
-  Snapshots/  capture and retention
+  Snapshots/  capture, retention, and the tab-colour history
   Terminal/   Windows Terminal interrogation, snapshot-agents.py for the WSL side
   Ui/         tray icon, Settings, Snapshots and About windows
   AppInfo.cs  the display name and the identifier name

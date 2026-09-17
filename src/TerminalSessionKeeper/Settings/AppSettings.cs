@@ -43,10 +43,23 @@ public sealed class AppSettings
     /// </summary>
     public bool SampleTabColors { get; set; } = true;
 
+    /// <summary>
+    /// Put each tab's colour back when the tabs are rebuilt. Doing it properly means lending
+    /// Windows Terminal a setTabColor action for a second or two — see
+    /// <c>WtSettingsPatch</c> — because the colour <c>wt.exe</c> can set from the command line
+    /// is one the user could never clear again. Turn it off to leave restored tabs uncoloured
+    /// and Windows Terminal's own settings.json untouched.
+    /// </summary>
+    public bool RestoreTabColors { get; set; } = true;
+
     /// <summary>Snapshots kept on disk. They are a few KB each.</summary>
     public int KeepSnapshots { get; set; } = 20;
 
-    /// <summary>Windows Terminal window name that restored tabs are gathered into.</summary>
+    /// <summary>
+    /// Base name of the Windows Terminal window restored tabs are gathered into. Each restore
+    /// adds the time it ran, so it always builds a window of its own — see
+    /// <c>RestoreService.WindowName</c>.
+    /// </summary>
     public string RestoreWindowName { get; set; } = "tskrestore";
 
     /// <summary>

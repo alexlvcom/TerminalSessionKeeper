@@ -32,18 +32,40 @@ public sealed class RestoreService
     private const string ConsoleHostProcessName = "OpenConsole.exe";
 
     private readonly ILog _log;
+    private readonly TabColorApplier _colors;
 
-    public RestoreService(ILog log) => _log = log;
+    public RestoreService(ILog log, TabColorApplier? colors = null)
+    {
+        _log = log;
+        _colors = colors ?? new TabColorApplier(log);
+    }
+
+    /// <summary>
+    /// The Windows Terminal window name this restore gathers its tabs into.
+    ///
+    /// Unique per restore, and that is the whole point. <c>wt -w &lt;name&gt;</c> creates a window
+    /// with that name only if none exists and otherwise adds the tab to the one that does — so a
+    /// fixed name meant the second restore appended its tabs to the window the first restore had
+    /// built, however many days earlier. The configured name is the prefix; the clock makes it
+    /// this restore's own.
+    /// </summary>
+    public static string WindowName(string configured, DateTimeOffset? now = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(configured) ? "tskrestore" : configured.Trim();
+
+        return $"{prefix}-{(now ?? DateTimeOffset.Now):HHmmss}";
+    }
 
     /// <summary>Prints what would be launched, and launches nothing.</summary>
     public RestoreOutcome DryRun(SnapshotRecord snapshot, AppSettings settings)
     {
         var commands = new List<string>();
         var tabs = snapshot.Tabs.ToList();
+        var windowName = WindowName(settings.RestoreWindowName);
 
         foreach (var tab in tabs)
         {
-            var arguments = WtArguments.ForTab(tab, settings.RestoreWindowName, settings.PinTitles);
+            var arguments = WtArguments.ForTab(tab, windowName, settings.PinTitles);
             if (arguments is null)
             {
                 commands.Add($"(skipped: {tab.Kind} tab with nothing to rebuild from)");
@@ -57,6 +79,11 @@ public sealed class RestoreService
 
             var title = WtArguments.TitleToReapply(tab, settings.PinTitles);
             if (!string.IsNullOrEmpty(title)) commands.Add($"    renames the tab to: {title}");
+
+            if (settings.RestoreTabColors && !string.IsNullOrWhiteSpace(tab.Color))
+            {
+                commands.Add($"    colours the tab {tab.Color} [as the colour picker does, so it can be reset]");
+            }
 
             if (!string.IsNullOrEmpty(tab.ResumeCommand))
             {
@@ -77,11 +104,15 @@ public sealed class RestoreService
 
         var environment = ComposeEnvironment();
         var pending = new List<(TabRecord Tab, int ProcessId)>();
+        var colored = new List<ColoredTab>();
         var launched = 0;
+
+        // A window of this restore's own. The first tab creates it and the rest join it by name.
+        var windowName = WindowName(settings.RestoreWindowName);
 
         foreach (var tab in tabs)
         {
-            var arguments = WtArguments.ForTab(tab, settings.RestoreWindowName, settings.PinTitles);
+            var arguments = WtArguments.ForTab(tab, windowName, settings.PinTitles);
             if (arguments is null)
             {
                 _log.Warn($"Skipping a {tab.Kind} tab: not enough information to rebuild it.");
@@ -93,6 +124,13 @@ public sealed class RestoreService
             if (!Launch(arguments, environment))
             {
                 continue;
+            }
+
+            // Index among the launched tabs, which is the order they sit in the strip — and what
+            // the colour pass focuses them by.
+            if (settings.RestoreTabColors && !string.IsNullOrWhiteSpace(tab.Color))
+            {
+                colored.Add(new ColoredTab(launched, tab.Color));
             }
 
             launched++;
@@ -117,13 +155,17 @@ public sealed class RestoreService
             }
         }
 
+        // Colours first: it moves the focus from tab to tab, and typing goes into each tab's
+        // console queue rather than to whatever is focused, so this way round nothing races.
+        if (colored.Count > 0) _colors.Apply(colored, windowName, launched);
+
         if (pending.Count > 0)
         {
             Thread.Sleep(SettleBeforeTyping);
             foreach (var (tab, processId) in pending) TypeInto(tab, processId, settings);
         }
 
-        var summary = $"Restored {launched} of {tabs.Count} tab(s) into '{settings.RestoreWindowName}'.";
+        var summary = $"Restored {launched} of {tabs.Count} tab(s) into a new window, '{windowName}'.";
         if (!settings.AutoResume && tabs.Any(tab => !string.IsNullOrEmpty(tab.ResumeCommand)))
         {
             summary += " Agent tabs have their resume command waiting at the prompt.";

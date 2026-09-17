@@ -6,6 +6,15 @@ using TerminalSessionKeeper.Logging;
 namespace TerminalSessionKeeper.Terminal;
 
 /// <summary>
+/// One window's worth of tab colours. <paramref name="Read"/> is false when the window could not
+/// be read at all — minimized, unrenderable, or a frame the sampler would not vouch for — and
+/// every entry in <paramref name="Colors"/> is then silence rather than "this tab has no colour".
+/// </summary>
+/// <param name="Read">True when the frame was good enough to draw conclusions from.</param>
+/// <param name="Colors">Index for index with the window's tabs; null where a tab has no colour.</param>
+public sealed record TabColorScan(bool Read, IReadOnlyList<string?> Colors);
+
+/// <summary>
 /// Recovers each tab's colour by rendering the terminal window and reading the pixels.
 ///
 /// No Windows Terminal API exposes a tab colour, and nothing persists one: a colour set from the
@@ -26,6 +35,13 @@ namespace TerminalSessionKeeper.Terminal;
 ///
 /// Everything here fails closed: anything uncertain is reported as "no colour" rather than as a
 /// guess, because a wrong colour would be written into the snapshot and reapplied on restore.
+///
+/// Failing closed has to mean "no evidence", not "no colour". A restored colour is sampled again
+/// on the next snapshot, so a reading mistaken for a colour — or for the absence of one — is fed
+/// back in and re-read, and the un-blending divides by 0.30 and multiplies every rounding error
+/// by more than three. That loop is what once walked a tab from #DD153D to #FF0051 and another
+/// from #010101 to black. <see cref="TabColorScan.Read"/> is how a window that could not be read
+/// is told apart from one where nothing is coloured; only the second is evidence.
 /// </summary>
 public sealed class TabColorSampler
 {
@@ -61,9 +77,9 @@ public sealed class TabColorSampler
     /// entry is null when the tab has no colour, or when its colour could not be read with
     /// confidence.
     /// </summary>
-    public IReadOnlyList<string?> Sample(TerminalWindow window)
+    public TabColorScan Sample(TerminalWindow window)
     {
-        var none = new string?[window.Tabs.Count];
+        var none = new TabColorScan(false, new string?[window.Tabs.Count]);
         if (window.Tabs.Count == 0) return none;
 
         if (window.Handle == IntPtr.Zero)
@@ -93,10 +109,12 @@ public sealed class TabColorSampler
                     HorizontalInset, RightInset, VerticalInset);
             }
 
-            var background = EmptyStripColor(pixels, window) ?? StripBackground(window.Tabs, readings);
+            var background = Background(EmptyStripColor(pixels, window),
+                StripBackground(window.Tabs, readings), out var disagreement);
+
             if (background is null)
             {
-                _log.Debug("Tab colours skipped: the tab strip background could not be identified.");
+                _log.Debug($"Tab colours skipped: {disagreement}");
                 return none;
             }
 
@@ -116,7 +134,7 @@ public sealed class TabColorSampler
             _log.Debug($"Tab colours: {found} of {window.Tabs.Count} tab(s) are coloured " +
                        $"(strip background {ToHex(background.Value)}).");
 
-            return colors;
+            return new TabColorScan(true, colors);
         }
         catch (Exception ex) when (ex is ExternalException or InvalidOperationException
                                       or ArgumentException or OutOfMemoryException)
@@ -191,6 +209,34 @@ public sealed class TabColorSampler
 
         // The strip background showing through a selected tab means no colour either.
         return IsSameColor(color, stripBackground) ? null : ToHex(color);
+    }
+
+    /// <summary>
+    /// The strip background the rest of the reading is measured against, or null when the two
+    /// ways of finding it disagree.
+    ///
+    /// Everything hangs off this one colour: an unfocused tab is called uncoloured because it
+    /// matches the background, and coloured tabs are un-blended out of it. A background read
+    /// wrong by more than the tolerance therefore does not spoil one tab, it invents a colour
+    /// for every uncoloured tab in the window at once — which is exactly what a frame that came
+    /// back black once did, turning a plain tab into #AAAAAA. So when the bare strip and the
+    /// tabs themselves both have something to say and they disagree, neither is believed.
+    /// </summary>
+    public static Color? Background(Color? fromEmptyStrip, Color? fromTabs, out string disagreement)
+    {
+        disagreement = string.Empty;
+
+        if (fromEmptyStrip is { } strip && fromTabs is { } tabs && !IsSameColor(strip, tabs))
+        {
+            disagreement = $"the bare tab strip reads {ToHex(strip)} but the tabs themselves " +
+                           $"read {ToHex(tabs)}, so the background is not settled.";
+            return null;
+        }
+
+        var background = fromEmptyStrip ?? fromTabs;
+        if (background is null) disagreement = "the tab strip background could not be identified.";
+
+        return background;
     }
 
     /// <summary>
@@ -290,6 +336,13 @@ public sealed class TabColorSampler
         }
 
         if (sampled < 40) return null;
+
+        // A tab scrolled out of an overflowing strip still has a bounding rectangle, and it can
+        // sit almost entirely outside the window: what is left inside is a sliver of the window
+        // edge that reads as a perfectly flat colour and is not the tab at all. Only a rectangle
+        // that is mostly on screen is a reading.
+        var area = Math.Max(right - left, 0) * Math.Max(bottom - top, 0);
+        if (sampled * 4 < area * 3) return null;
 
         var best = counts.OrderByDescending(entry => entry.Value).First();
 

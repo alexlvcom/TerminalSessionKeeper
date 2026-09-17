@@ -24,6 +24,23 @@ public class WtArgumentsTests
     }
 
     [Fact]
+    public void A_colour_is_not_put_on_the_command_line()
+    {
+        // --tabColor sets the tab's settings-level colour, and Windows Terminal's own Reset
+        // clears only the runtime colour above it — so a tab coloured this way snaps back to
+        // that colour every time the user tries to clear it. TabColorApplier does it instead.
+        var tab = TabBuilder.Wsl("/home/me/source/checkout-api");
+        tab.Title = "checkout-api";
+        tab.Color = "#DC143C";
+
+        var arguments = WtArguments.ForTab(tab, "tskrestore", pinTitles: false);
+
+        Assert.NotNull(arguments);
+        Assert.DoesNotContain("--tabColor", arguments);
+        Assert.DoesNotContain("#DC143C", arguments);
+    }
+
+    [Fact]
     public void A_windows_tab_keeps_its_profiles_own_command_line()
     {
         // Windows Terminal hands a tab the caller's environment only when the command line is

@@ -34,11 +34,11 @@ public static class WtArguments
             if (pinTitles || tab.TitlePinned) arguments.Add("--suppressApplicationTitle");
         }
 
-        if (!string.IsNullOrWhiteSpace(tab.Color))
-        {
-            arguments.Add("--tabColor");
-            arguments.Add(tab.Color);
-        }
+        // No --tabColor, deliberately. It sets the tab's settings-level colour, and Windows
+        // Terminal's own Reset clears only the runtime colour on top of it — so a tab coloured
+        // from the command line snaps back to that colour every time the user tries to clear
+        // it. The colour is applied afterwards instead, as the colour picker would; see
+        // TabColorApplier.
 
         switch (tab.Kind)
         {
