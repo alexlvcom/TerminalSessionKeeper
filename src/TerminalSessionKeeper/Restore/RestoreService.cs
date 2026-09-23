@@ -63,6 +63,14 @@ public sealed class RestoreService
         var tabs = snapshot.Tabs.ToList();
         var windowName = WindowName(settings.RestoreWindowName);
 
+        var variables = AppSettings.ParseEnvironment(settings.RestoreWslEnvironment);
+        if (variables.Count > 0)
+        {
+            commands.Add("WSL tabs start with: " +
+                         string.Join(' ', variables.Select(variable => $"{variable.Name}={variable.Value}")) +
+                         " [passed through WSLENV]");
+        }
+
         foreach (var tab in tabs)
         {
             var arguments = WtArguments.ForTab(tab, windowName, settings.PinTitles);
@@ -74,7 +82,7 @@ public sealed class RestoreService
 
             commands.Add(WtArguments.Describe(arguments));
 
-            var setup = WtArguments.SetupCommand(tab);
+            var setup = WtArguments.SetupCommand(tab, settings.TypeCdIntoWslTabs);
             if (!string.IsNullOrEmpty(setup)) commands.Add("    types: " + setup);
 
             var title = WtArguments.TitleToReapply(tab, settings.PinTitles);
@@ -102,7 +110,7 @@ public sealed class RestoreService
             return new RestoreOutcome(0, 0, "That snapshot has no tabs in it.", Array.Empty<string>());
         }
 
-        var environment = ComposeEnvironment();
+        var environment = ComposeEnvironment(settings);
         var pending = new List<(TabRecord Tab, int ProcessId)>();
         var colored = new List<ColoredTab>();
         var launched = 0;
@@ -225,12 +233,12 @@ public sealed class RestoreService
 
     private static bool NeedsAttention(TabRecord tab, AppSettings settings) =>
         !string.IsNullOrEmpty(tab.ResumeCommand)
-        || WtArguments.SetupCommand(tab) is not null
+        || WtArguments.SetupCommand(tab, settings.TypeCdIntoWslTabs) is not null
         || WtArguments.TitleToReapply(tab, settings.PinTitles) is not null;
 
     private void TypeInto(TabRecord tab, int processId, AppSettings settings)
     {
-        var setup = WtArguments.SetupCommand(tab);
+        var setup = WtArguments.SetupCommand(tab, settings.TypeCdIntoWslTabs);
 
         if (!string.IsNullOrEmpty(setup))
         {
@@ -291,10 +299,35 @@ public sealed class RestoreService
     /// PowerShell's in a restored 5.1 tab, whose profile then failed to resolve cmdlets
     /// ("Import-PowerShellDataFile is not recognized") and silently lost the user's git aliases.
     /// PSModulePath is therefore rebuilt from the User and Machine values a fresh process gets.
+    ///
+    /// The same hand-off is what carries <see cref="AppSettings.RestoreWslEnvironment"/> into the
+    /// restored tabs, and only into them. WSL imports a Windows variable only when WSLENV names
+    /// it, so each one is appended there; Windows Terminal adds its own WT_SESSION on top.
     /// </summary>
-    public static IReadOnlyDictionary<string, string> ComposeEnvironment()
+    public static IReadOnlyDictionary<string, string> ComposeEnvironment(AppSettings settings,
+        string? inheritedWslEnv = null)
     {
         var composed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var variables = AppSettings.ParseEnvironment(settings.RestoreWslEnvironment);
+        if (variables.Count > 0)
+        {
+            foreach (var (name, value) in variables) composed[name] = value;
+
+            var inherited = inheritedWslEnv ?? Environment.GetEnvironmentVariable("WSLENV") ?? string.Empty;
+            var names = inherited.Split(':', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            foreach (var (name, _) in variables)
+            {
+                // An entry may carry flags (NAME/u); the name is what makes it a duplicate.
+                if (!names.Any(entry => string.Equals(entry.Split('/')[0], name, StringComparison.Ordinal)))
+                {
+                    names.Add(name);
+                }
+            }
+
+            composed["WSLENV"] = string.Join(':', names);
+        }
 
         var parts = new[]
             {

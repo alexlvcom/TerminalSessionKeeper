@@ -106,7 +106,7 @@ public class WtArgumentsTests
     [Fact]
     public void A_wsl_tab_is_told_to_cd_again_after_its_shell_starts()
     {
-        // A .zshrc that restores the last working directory runs after wsl --cd has applied and
+        // A start-up script that changes directory on its own runs after wsl --cd has applied and
         // would otherwise drag every restored tab into the same folder.
         var tab = TabBuilder.Wsl("/home/me/source/checkout-api");
         tab.Title = "checkout-api";
@@ -114,6 +114,15 @@ public class WtArgumentsTests
         var setup = WtArguments.SetupCommand(tab);
 
         Assert.Equal(" cd -- '/home/me/source/checkout-api'", setup);
+    }
+
+    [Fact]
+    public void The_typed_cd_can_be_turned_off()
+    {
+        // A shell kept in place by the restore's environment is already where wsl --cd put it.
+        var tab = TabBuilder.Wsl("/home/me/source/checkout-api");
+
+        Assert.Null(WtArguments.SetupCommand(tab, typeCd: false));
     }
 
     [Fact]

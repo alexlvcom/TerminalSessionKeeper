@@ -85,6 +85,8 @@ Four things and an exit. Everything else lives in one of the two windows.
 | **Keep saved tab titles** | Freeze restored titles instead of letting the shell rename them |
 | **Remember tab colours** | See [Titles and colours](#titles-and-colours) |
 | **Put tab colours back** | Applied the way the colour picker applies one, so Reset still clears it |
+| **Custom environment variables** | `NAME=value` lines added only to restored WSL tabs — see [Custom environment variables](#custom-environment-variables) |
+| **Type a cd into each restored WSL tab** | On by default, in case the shell changes directory while starting up |
 | **Show a notification** | After a snapshot or a restore |
 | **Start with Windows** | `HKCU\...\CurrentVersion\Run`. No elevation, no scheduled task |
 
@@ -110,11 +112,18 @@ The command is typed into the tab's console input queue, so the prompt receives 
 exactly as if you had typed it. That works the same for a PowerShell tab — where
 PSReadLine cannot be pre-filled through its own API from outside its prompt — and
 for a WSL tab, where the keystrokes cross the ConPTY into the Linux pty and land on
-the zsh command line. This is why there is no shell-side hook to install.
+the shell's command line. This is why there is no shell-side hook to install.
 
-A WSL tab also gets one short `cd` typed and run first. That is deliberate: a
-`.zshrc` that restores your last working directory runs *after* `wsl --cd` has
-applied, and without it every restored tab lands in the same folder.
+A WSL tab also gets one short `cd` typed and run first, in case the shell changed
+directory while starting up — that runs *after* `wsl --cd` has applied. If yours does
+not, turn off **Type a cd into each restored WSL tab**.
+
+### Custom environment variables
+
+**Settings → Environment** takes environment variables for restored WSL tabs, one
+`NAME=value` per line. They are added only to the tabs a restore opens, passed into
+WSL through `WSLENV`; tabs you open yourself are not affected. What they are for is
+up to you — your shell's start-up scripts can read them like any other variable.
 
 ## Titles and colours
 

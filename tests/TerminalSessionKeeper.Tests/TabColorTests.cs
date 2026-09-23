@@ -172,8 +172,8 @@ public class TabColorScalingTests
     [Fact]
     public void A_window_on_a_differently_scaled_monitor_is_not_read()
     {
-        // Signed in at 150% and moved to a 100% screen: the rectangles came back scaled, and
-        // SN-1053's red was read off the tab to its right.
+        // Signed in at 150% and moved to a 100% screen: the rectangles came back scaled, and one
+        // tab's red was read off the tab to its right.
         Assert.False(TabColorSampler.ScalingMatches(96, 144));
         Assert.False(TabColorSampler.ScalingMatches(144, 96));
     }

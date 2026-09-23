@@ -12,6 +12,16 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.2.0", "2026-09-23", new[]
+        {
+            "New Settings tab, Environment: custom environment variables for restored WSL tabs,",
+            "     one NAME=value per line. They are added only to the tabs a restore opens, passed",
+            "     into WSL through WSLENV; tabs you open yourself are not affected.",
+            "New setting, 'Type a cd into each restored WSL tab', on by default. It puts a tab",
+            "     back in its saved folder in case the shell changed directory while starting",
+            "     up; turn it off if yours does not, and no extra line is typed into the tabs.",
+        }),
+
         ("1.1.1", "2026-09-23", new[]
         {
             "A tab colour no longer moves to the neighbouring tab when the terminal is on a",

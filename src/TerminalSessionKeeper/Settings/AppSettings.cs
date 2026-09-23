@@ -63,6 +63,21 @@ public sealed class AppSettings
     public string RestoreWindowName { get; set; } = "tskrestore";
 
     /// <summary>
+    /// Extra environment for restored WSL tabs, one <c>NAME=value</c> per line. Each name is
+    /// added to <c>WSLENV</c> so it reaches the Linux side, and it exists only in the tabs a
+    /// restore builds — a tab opened by hand afterwards never sees it. The app attaches no
+    /// meaning to any name; what the variables are for is the user's business.
+    /// </summary>
+    public string RestoreWslEnvironment { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Type <c>cd -- &lt;dir&gt;</c> into each restored WSL tab once its shell is up, in case the
+    /// shell changed directory while starting up, after <c>wsl --cd</c> had applied. A shell that
+    /// does not is already in place, and the line is then only noise in every tab.
+    /// </summary>
+    public bool TypeCdIntoWslTabs { get; set; } = true;
+
+    /// <summary>
     /// Boot time of the session an automatic restore last ran in. Stops a second automatic
     /// restore inside one boot — the app restarting must not rebuild the tabs again.
     /// </summary>
@@ -76,6 +91,40 @@ public sealed class AppSettings
         AutoSnapshotIntervalMinutes, MinSnapshotIntervalMinutes, MaxSnapshotIntervalMinutes));
 
     public int EffectiveKeepSnapshots => Math.Clamp(KeepSnapshots, 1, 500);
+
+    /// <summary>
+    /// The <c>NAME=value</c> lines of <see cref="RestoreWslEnvironment"/>. Blank lines and
+    /// <c>#</c> comments are skipped, the value is everything after the first <c>=</c>, and a
+    /// name that is not a plain identifier is dropped: WSLENV separates names with <c>:</c> and
+    /// flags them with <c>/</c>, with no way to escape either.
+    /// </summary>
+    public static IReadOnlyList<(string Name, string Value)> ParseEnvironment(string? text)
+    {
+        var variables = new List<(string Name, string Value)>();
+        if (string.IsNullOrWhiteSpace(text)) return variables;
+
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+
+            var separator = line.IndexOf('=');
+            if (separator <= 0) continue;
+
+            var name = line[..separator].Trim();
+            if (!IsVariableName(name)) continue;
+
+            variables.RemoveAll(variable => variable.Name == name);
+            variables.Add((name, line[(separator + 1)..].Trim()));
+        }
+
+        return variables;
+    }
+
+    private static bool IsVariableName(string name) =>
+        name.Length > 0
+        && (char.IsAsciiLetter(name[0]) || name[0] == '_')
+        && name.All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
 }
 
 public sealed class SettingsStore

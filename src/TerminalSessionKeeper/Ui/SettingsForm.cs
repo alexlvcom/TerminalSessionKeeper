@@ -28,6 +28,8 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _notifications;
     private readonly CheckBox _startWithWindows;
     private readonly TextBox _windowName;
+    private readonly TextBox _wslEnvironment;
+    private readonly CheckBox _typeCd;
 
     /// <summary>The edited copy, valid once the dialog returns OK.</summary>
     public AppSettings Result => _settings;
@@ -75,6 +77,18 @@ public sealed class SettingsForm : Form
 
         _windowName = new TextBox { Text = settings.RestoreWindowName, Width = 220 };
 
+        _wslEnvironment = new TextBox
+        {
+            Text = (settings.RestoreWslEnvironment ?? string.Empty).Replace("\r\n", "\n").Replace("\n", "\r\n"),
+            Multiline = true,
+            AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical,
+            Width = 548,
+            Height = 58,
+        };
+
+        _typeCd = Check("Type a cd into each restored WSL tab", settings.TypeCdIntoWslTabs);
+
         Controls.Add(BuildTabs());
         Controls.Add(BuildButtons());
 
@@ -104,6 +118,14 @@ public sealed class SettingsForm : Form
             Row("Rebuild tabs into a new window named", _windowName, string.Empty),
             Note("Every restore opens its own window and the name carries the time it ran, so a " +
                  "restore never adds its tabs to the window an earlier one built.")));
+
+        tabs.TabPages.Add(Page("Environment",
+            Caption("Custom environment variables for restored WSL tabs, one NAME=value per line:"),
+            _wslEnvironment,
+            Note("Added only to the WSL tabs a restore opens. Tabs you open yourself are not affected."),
+            _typeCd,
+            Note("Runs cd into the tab's saved folder once its shell has started, in case the shell " +
+                 "changed directory while starting up. Turn it off if yours does not.")));
 
         tabs.TabPages.Add(Page("Appearance",
             _pinTitles,
@@ -212,6 +234,9 @@ public sealed class SettingsForm : Form
             Tag = NoteTag,
         };
 
+    private static Label Caption(string text) =>
+        new() { Text = text, AutoSize = true, MaximumSize = new Size(548, 0) };
+
     private static Control Row(string before, Control field, string after)
     {
         var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
@@ -240,6 +265,8 @@ public sealed class SettingsForm : Form
         _settings.SampleTabColors = _sampleColors.Checked;
         _settings.RestoreTabColors = _restoreColors.Checked;
         _settings.ShowBalloonNotifications = _notifications.Checked;
+        _settings.RestoreWslEnvironment = _wslEnvironment.Text.Replace("\r\n", "\n").Trim();
+        _settings.TypeCdIntoWslTabs = _typeCd.Checked;
 
         var windowName = _windowName.Text.Trim();
         if (windowName.Length > 0) _settings.RestoreWindowName = windowName;

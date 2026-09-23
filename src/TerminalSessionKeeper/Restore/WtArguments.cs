@@ -96,19 +96,26 @@ public static class WtArguments
     /// The one line typed into a restored tab and submitted before the resume command is left
     /// waiting, or null when the tab needs nothing.
     ///
-    /// Only a WSL tab needs it, and only for its directory: a .zshrc that restores the last
-    /// working directory runs after <c>wsl --cd</c> has applied and would otherwise drag every
-    /// restored tab into the same folder. The title is not set here — a title command has to be
+    /// Only a WSL tab needs it, and only for its directory: a shell start-up script that changes
+    /// directory on its own — to the last one used, say — runs after <c>wsl --cd</c> has applied
+    /// and would otherwise drag every restored tab into the same folder. The title is not set here — a title command has to be
     /// submitted, and the prompt that follows is precisely when a themed shell renames the tab
     /// after its folder again, so the shell always won. It goes through the console instead;
     /// see <c>ConsoleInjector.SetTitle</c>.
+    ///
+    /// <paramref name="typeCd"/> false leaves it out: a shell told to stay put by the restore's
+    /// environment is already in the right directory, and the line is then only noise in every
+    /// tab.
     /// </summary>
-    public static string? SetupCommand(TabRecord tab)
+    public static string? SetupCommand(TabRecord tab, bool typeCd = true)
     {
+        if (!typeCd) return null;
+
         if (!TabKinds.IsWsl(tab.Kind) || string.IsNullOrWhiteSpace(tab.Cwd)) return null;
 
-        // The leading space keeps it out of zsh's history under HIST_IGNORE_SPACE, so the user's
-        // Up-arrow still lands on their own last command.
+        // The leading space keeps it out of the shell's history where that is configured (bash's
+        // HISTCONTROL=ignorespace, zsh's HIST_IGNORE_SPACE), so Up still lands on the user's own
+        // last command.
         return $" cd -- {PosixQuote(tab.Cwd)}";
     }
 
