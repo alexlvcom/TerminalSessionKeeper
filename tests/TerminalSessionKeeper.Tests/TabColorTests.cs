@@ -160,6 +160,31 @@ public class TabColorBackgroundTests
     }
 }
 
+public class TabColorScalingTests
+{
+    [Fact]
+    public void A_window_at_the_system_scaling_lines_up_with_its_pixels()
+    {
+        Assert.True(TabColorSampler.ScalingMatches(96, 96));
+        Assert.True(TabColorSampler.ScalingMatches(144, 144));
+    }
+
+    [Fact]
+    public void A_window_on_a_differently_scaled_monitor_is_not_read()
+    {
+        // Signed in at 150% and moved to a 100% screen: the rectangles came back scaled, and
+        // SN-1053's red was read off the tab to its right.
+        Assert.False(TabColorSampler.ScalingMatches(96, 144));
+        Assert.False(TabColorSampler.ScalingMatches(144, 96));
+    }
+
+    [Fact]
+    public void A_scaling_that_could_not_be_read_is_not_a_match()
+    {
+        Assert.False(TabColorSampler.ScalingMatches(0, 96));
+    }
+}
+
 public class WtSettingsPatchTests
 {
     private const string Settings = """

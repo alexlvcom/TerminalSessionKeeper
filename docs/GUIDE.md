@@ -144,7 +144,10 @@ how a crimson tab once walked to `#FF0051` and a plain one picked up a grey it n
 had. The cost is that a colour you set by hand takes one extra snapshot to stick, and
 a colour you clear takes one extra snapshot to disappear.
 
-A *minimized* window has nothing to draw, and its colours carry forward instead.
+A *minimized* window has nothing to draw, and its colours carry forward instead. So
+does a window whose tab positions cannot be trusted to line up with its pixels — on a
+monitor scaled differently from this process, if per-monitor DPI awareness is ever
+unavailable — since reading it would put one tab's colour on its neighbour.
 Anything uncertain — a frame the two background readings disagree about, a tab
 scrolled out of an overflowing strip — is recorded as no colour rather than as a
 guess. Turn the whole thing off with **Remember tab colours** if you would rather it

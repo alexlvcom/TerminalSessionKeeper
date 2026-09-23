@@ -12,6 +12,17 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.1.1", "2026-09-23", new[]
+        {
+            "A tab colour no longer moves to the neighbouring tab when the terminal is on a",
+            "     monitor scaled differently from the one at sign-in. The app was not per-monitor",
+            "     DPI aware, so Windows handed it tab positions scaled to the sign-in monitor while",
+            "     the rendered window stayed in real pixels: every tab was sampled a little left",
+            "     of where it is, a red tab's colour was recorded on the tab to its right, and",
+            "     others read as black. The app is now per-monitor aware, and a window whose tab",
+            "     positions still cannot be trusted to match its pixels is not sampled at all.",
+        }),
+
         ("1.1.0", "2026-09-17", new[]
         {
             "A restored tab colour can be cleared again. Windows Terminal keeps two colours per",

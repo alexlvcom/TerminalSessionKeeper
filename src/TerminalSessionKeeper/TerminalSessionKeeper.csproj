@@ -10,6 +10,13 @@
          it, but hand-declared vtables are a crash away from a wrong slot; the managed
          wrapper is the one the reference implementation proved on this machine. -->
     <UseWPF>true</UseWPF>
+    <!-- Tab colours are read by rendering the terminal and sampling the pixels under each tab's
+         UI Automation rectangle. A system-aware process gets those rectangles scaled whenever
+         the terminal sits on a monitor with other scaling than the one at sign-in, while the
+         render stays in physical pixels — so every tab was read a little further to the left
+         than it is, and a colour landed on the neighbouring tab. Per-monitor awareness makes
+         both physical. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -17,7 +24,7 @@
     <AssemblyName>TerminalSessionKeeper</AssemblyName>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <!-- Marketing version: bump the first three parts when Changelog.cs gains an entry. -->
-    <VersionPrefix>1.1.0</VersionPrefix>
+    <VersionPrefix>1.1.1</VersionPrefix>
     <!-- Wildcard build/revision auto-changes on every build (needs Deterministic=false),
          so the About window shows a distinct version per build. -->
     <AssemblyVersion>1.1.*</AssemblyVersion>
@@ -27,7 +34,7 @@
     <NoWarn>$(NoWarn);CS7035</NoWarn>
     <!-- Must be pinned: without it the SDK derives FileVersion from AssemblyVersion and the
          literal "1.0.*" ends up in the Win32 version resource. -->
-    <FileVersion>1.1.0.0</FileVersion>
+    <FileVersion>1.1.1.0</FileVersion>
     <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
          see AppInfo.cs. -->
     <Product>Terminal Session Keeper</Product>

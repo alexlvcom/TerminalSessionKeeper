@@ -42,6 +42,14 @@ public sealed record TabColorScan(bool Read, IReadOnlyList<string?> Colors);
 /// by more than three. That loop is what once walked a tab from #DD153D to #FF0051 and another
 /// from #010101 to black. <see cref="TabColorScan.Read"/> is how a window that could not be read
 /// is told apart from one where nothing is coloured; only the second is evidence.
+///
+/// The tab rectangles and the rendered pixels have to be in the same units, and that is up to
+/// DPI awareness. A process that is not per-monitor aware is handed UI Automation rectangles
+/// scaled to the DPI it started with, while <c>PrintWindow</c> draws at the window's real size —
+/// so on a monitor with other scaling every tab is sampled a little to the left of where it is,
+/// the error growing along the strip. That once moved a tab's red onto its right-hand neighbour
+/// and read three others as black. The app is per-monitor aware for this reason, and the sampler
+/// declines to read a window it cannot be sure about rather than trusting that it is.
 /// </summary>
 public sealed class TabColorSampler
 {
@@ -65,8 +73,23 @@ public sealed class TabColorSampler
 
     private const uint RenderFullContent = 2;
 
+    /// <summary>DPI_AWARENESS_PER_MONITOR_AWARE, as GetAwarenessFromDpiAwarenessContext reports it.</summary>
+    private const int PerMonitorAware = 2;
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDpiAwarenessContext();
+
+    [DllImport("user32.dll")]
+    private static extern int GetAwarenessFromDpiAwarenessContext(IntPtr context);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForSystem();
 
     private readonly ILog _log;
 
@@ -91,6 +114,13 @@ public sealed class TabColorSampler
         if (window.Bounds.Width < 200 || window.Bounds.Height < 100 || window.Bounds.X <= MinimizedEdge)
         {
             _log.Debug("Tab colours skipped: the terminal window is minimized.");
+            return none;
+        }
+
+        if (!CoordinatesArePixels(window.Handle))
+        {
+            _log.Debug("Tab colours skipped: the terminal is on a monitor scaled differently from " +
+                       "this process, so its tab positions would not line up with its pixels.");
             return none;
         }
 
@@ -143,6 +173,32 @@ public sealed class TabColorSampler
             return none;
         }
     }
+
+    /// <summary>
+    /// Whether UI Automation rectangles for this window are in the same physical pixels that
+    /// <c>PrintWindow</c> renders. Always, for a per-monitor-aware thread; otherwise only while the
+    /// window's monitor has the scaling this process started with.
+    /// </summary>
+    private static bool CoordinatesArePixels(IntPtr window)
+    {
+        try
+        {
+            var perMonitor = GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext()) == PerMonitorAware;
+            return perMonitor || ScalingMatches(GetDpiForWindow(window), GetDpiForSystem());
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // Older than Windows 10 1607: nothing to ask, so nothing to vouch for.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// For a process that is not per-monitor aware: a window's coordinates are unscaled only when
+    /// its DPI is the system's. A DPI that could not be read is not taken as a match.
+    /// </summary>
+    public static bool ScalingMatches(uint windowDpi, uint systemDpi) =>
+        windowDpi != 0 && windowDpi == systemDpi;
 
     /// <summary>
     /// Asks the window to draw itself into a bitmap. PW_RENDERFULLCONTENT is what makes this work
