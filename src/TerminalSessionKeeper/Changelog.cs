@@ -12,6 +12,13 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.2.1", "2026-09-23", new[]
+        {
+            "Fixed Settings not being saved. Closing the dialog cleared its internal reference",
+            "     before the saved values were applied, so the app threw an error and reopened",
+            "     with defaults. Environment variables and the WSL cd setting now persist.",
+        }),
+
         ("1.2.0", "2026-09-23", new[]
         {
             "New Settings tab, Environment: custom environment variables for restored WSL tabs,",

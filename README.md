@@ -17,6 +17,7 @@ your dotfiles, and no scheduled task.
 - **Restores after a reboot** — each tab comes back in its own directory with its resume command waiting at the prompt.
 - **Knows four agents** — Claude Code, Codex, Antigravity and Junie, on the Windows side of a tab or inside WSL.
 - **Nothing starts on its own** — press Enter in the tabs you actually want, or switch on automatic resume if you disagree.
+- **Controls restored WSL tabs** — add `NAME=value` variables only to tabs a restore creates, and choose whether it types a final `cd` back into each tab's saved folder.
 - **Keeps titles and colours**, including hand-renamed tabs, matched back by content rather than by position. A restored colour is applied the way the colour picker applies one, so the terminal's own **Reset** still clears it.
 - **Browse every snapshot** — see what is in it and preview exactly what a restore would launch.
 

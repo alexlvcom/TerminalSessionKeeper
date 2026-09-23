@@ -242,8 +242,15 @@ public sealed class TrayApplicationContext : ApplicationContext
         // A copy, so Cancel really cancels.
         var draft = _settingsStore.Load();
 
-        _settingsForm = new SettingsForm(draft, _startupManager, _icon);
-        _settingsForm.FormClosed += (_, _) => _settingsForm = null;
+        // Keep this local reference until ShowDialog has returned. FormClosed fires while
+        // ShowDialog is unwinding, so reading _settingsForm after that event would lose the
+        // saved draft before it ever reaches ApplySettings.
+        var settingsForm = new SettingsForm(draft, _startupManager, _icon);
+        _settingsForm = settingsForm;
+        settingsForm.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(_settingsForm, settingsForm)) _settingsForm = null;
+        };
 
         // Modal: the settings decide what the timer and a restore do, so nothing else should be
         // running against a half-edited copy.
@@ -251,7 +258,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
-            if (_settingsForm.ShowDialog() == DialogResult.OK) ApplySettings(_settingsForm.Result);
+            if (settingsForm.ShowDialog() == DialogResult.OK) ApplySettings(settingsForm.Result);
         }
         finally
         {

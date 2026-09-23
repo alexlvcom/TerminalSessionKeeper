@@ -64,12 +64,21 @@ public class AppSettingsTests
         using var directory = new TempDirectory();
         var store = new SettingsStore(NullLog.Instance, directory.File("settings.json"));
 
-        store.Save(new AppSettings { AutoResume = true, AutoSnapshotIntervalMinutes = 3, PinTitles = true });
+        store.Save(new AppSettings
+        {
+            AutoResume = true,
+            AutoSnapshotIntervalMinutes = 3,
+            PinTitles = true,
+            RestoreWslEnvironment = "RESTORE_MESSAGE=hello world",
+            TypeCdIntoWslTabs = false,
+        });
         var loaded = store.Load();
 
         Assert.True(loaded.AutoResume);
         Assert.True(loaded.PinTitles);
         Assert.Equal(3, loaded.AutoSnapshotIntervalMinutes);
+        Assert.Equal("RESTORE_MESSAGE=hello world", loaded.RestoreWslEnvironment);
+        Assert.False(loaded.TypeCdIntoWslTabs);
     }
 
     [Fact]
