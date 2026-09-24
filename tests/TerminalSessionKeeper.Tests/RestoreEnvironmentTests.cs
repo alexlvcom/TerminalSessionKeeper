@@ -33,6 +33,7 @@ public class RestoreEnvironmentTests
         var environment = RestoreService.ComposeEnvironment(new AppSettings(), inheritedWslEnv: "USERPROFILE/p");
 
         Assert.False(environment.ContainsKey("WSLENV"));
+        Assert.Equal("1", environment["TERMINAL_SESSION_KEEPER_RESTORE"]);
     }
 
     [Fact]

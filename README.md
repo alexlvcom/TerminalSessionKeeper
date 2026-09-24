@@ -6,8 +6,9 @@ inside them — and puts them back after a restart.
 Windows Update does not care that you had twelve tabs open, each in a different
 project with a different agent session. This does.
 
-It is a tray app. There is no window, no shell profile to edit, nothing to add to
-your dotfiles, and no scheduled task.
+It is a tray app. There is no main window or scheduled task. PowerShell tabs that
+change directory after launch need an optional [prompt hook](docs/GUIDE.md#powershell-directory-capture)
+to save their current location accurately.
 
 ![Terminal Session Keeper tray menu](TerminalSessionKeeper-Tray.png)
 
@@ -18,7 +19,7 @@ your dotfiles, and no scheduled task.
 - **Knows four agents** — Claude Code, Codex, Antigravity and Junie, on the Windows side of a tab or inside WSL.
 - **Nothing starts on its own** — press Enter in the tabs you actually want, or switch on automatic resume if you disagree.
 - **Controls restored WSL tabs** — add `NAME=value` variables only to tabs a restore creates, and choose whether it types a final `cd` back into each tab's saved folder.
-- **Keeps titles and colours**, including hand-renamed tabs, matched back by content rather than by position. A restored colour is applied the way the colour picker applies one, so the terminal's own **Reset** still clears it.
+- **Keeps titles and colours**, including hand-renamed tabs, matched by content and, when reliable matches confirm it, tab order. A restored colour is applied the way the colour picker applies one, so the terminal's own **Reset** still clears it.
 - **Browse every snapshot** — see what is in it and preview exactly what a restore would launch.
 
 ## Requirements

@@ -6,6 +6,25 @@ namespace TerminalSessionKeeper.Tests;
 public class TitleMatcherTests
 {
     [Fact]
+    public void Ordered_tabs_with_two_anchors_keep_distinct_titles_when_shell_cwds_are_stale()
+    {
+        var tabs = new[]
+        {
+            new TabRecord { Kind = TabKinds.WinShell, Cwd = @"C:\Windows\System32", CommandLine = "cmd /k ping google.lv -t" },
+            TabBuilder.Windows(@"C:\Windows\System32"),
+            TabBuilder.Windows(@"C:\Windows\System32"),
+            TabBuilder.Wsl("/home/me/voice-comments-app"),
+            TabBuilder.Windows(@"C:\Windows\System32"),
+        };
+        var titles = new[] { "ping", "Install latest utils changes | System32", "TerminalSessionKeeper", "voice-comments-app", "KeyFlip" };
+
+        var result = TitleMatcher.Assign(tabs, titles);
+
+        Assert.Empty(result.UnmatchedTitles);
+        Assert.Equal(titles, tabs.Select(tab => tab.Title));
+    }
+
+    [Fact]
     public void A_leftover_tab_and_a_leftover_title_are_paired()
     {
         // "ABC-1022" has nothing in common with its folder or its session, and no branch to

@@ -277,6 +277,17 @@ public sealed class RestoreService
 
         foreach (var (key, value) in environment) startInfo.Environment[key] = value;
 
+        // The tray app may have been started from an automation shell with NO_COLOR=1 and
+        // TERM=dumb. A normal Windows Terminal tab does not inherit those settings; passing
+        // them through strips the user's oh-my-posh colours from every restored PowerShell tab.
+        foreach (var name in new[] { "NO_COLOR", "TERM" })
+        {
+            var persistent = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
+                ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
+            if (persistent is null) startInfo.Environment.Remove(name);
+            else startInfo.Environment[name] = persistent;
+        }
+
         try
         {
             using var process = Process.Start(startInfo);
@@ -308,6 +319,7 @@ public sealed class RestoreService
         string? inheritedWslEnv = null)
     {
         var composed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        composed["TERMINAL_SESSION_KEEPER_RESTORE"] = "1";
 
         var variables = AppSettings.ParseEnvironment(settings.RestoreWslEnvironment);
         if (variables.Count > 0)

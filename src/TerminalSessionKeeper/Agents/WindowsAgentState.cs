@@ -30,7 +30,7 @@ public sealed class WindowsAgentState
     /// Resolves the live session for an agent running in <paramref name="cwd"/>. Never throws:
     /// a tab with no resolvable session still restores, just without a command at its prompt.
     /// </summary>
-    public AgentSession Resolve(string agent, string? cwd)
+    public AgentSession Resolve(string agent, string? cwd, string? commandLine = null)
     {
         switch (agent.ToLowerInvariant())
         {
@@ -43,8 +43,9 @@ public sealed class WindowsAgentState
             case AgentCommands.Codex:
             {
                 var thread = _codex.ThreadFor(cwd);
-                return new AgentSession(thread?.Id, CodexSessions.DisplayTitle(thread),
-                    AgentCommands.Resume(agent, thread?.Id));
+                var id = CodexSessions.SessionIdFromCommandLine(commandLine) ?? thread?.Id;
+                return new AgentSession(id, id == thread?.Id ? CodexSessions.DisplayTitle(thread) : null,
+                    AgentCommands.Resume(agent, id));
             }
 
             case AgentCommands.Junie:

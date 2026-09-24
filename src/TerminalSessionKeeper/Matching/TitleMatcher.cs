@@ -80,6 +80,30 @@ public static class TitleMatcher
         var usedTabs = new HashSet<int>();
         var usedTitles = new HashSet<int>();
 
+        // The direct child processes are supplied in creation order, which is also the tab
+        // strip order until tabs are dragged. When every strong identity match is at that same
+        // index, use the order for otherwise indistinguishable shells (notably several pwsh
+        // processes whose PEB directories all remain System32 after Set-Location). Weak folder
+        // overlaps must not steal a neighbour's title in this case.
+        if (tabs.Count == titles.Count && tabs.Count > 1)
+        {
+            var strong = pairs.Where(pair => pair.Score >= ScoreBranch).ToList();
+            var anchored = strong.Where(pair => pair.Tab == pair.Title).ToList();
+            if (anchored.Count >= 2
+                && strong.All(pair => pair.Tab == pair.Title
+                    || anchored.Any(anchor => anchor.Tab == pair.Tab && anchor.Score >= pair.Score)
+                    || anchored.Any(anchor => anchor.Title == pair.Title && anchor.Score >= pair.Score)))
+            {
+                for (var index = 0; index < tabs.Count; index++)
+                {
+                    pairing[index] = index;
+                    Apply(tabs[index], titles[index]);
+                }
+
+                return new Result(Array.Empty<string>(), pairing);
+            }
+        }
+
         // Best-first and greedy. OrderByDescending is stable, so equal scores fall back to the
         // order the pairs were generated in and the outcome is reproducible.
         foreach (var pair in pairs.OrderByDescending(pair => pair.Score))
@@ -160,6 +184,16 @@ public static class TitleMatcher
         // 4. A tab Windows Terminal launched directly is named after its executable.
         if (!string.IsNullOrWhiteSpace(tab.CommandLine))
         {
+            // A cmd profile can run a command through /k or /c; the visible title often
+            // names that command rather than cmd.exe itself.
+            var commandWords = tab.CommandLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            var commandSwitch = Array.FindIndex(commandWords, word =>
+                word.Equals("/k", StringComparison.OrdinalIgnoreCase)
+                || word.Equals("/c", StringComparison.OrdinalIgnoreCase));
+            if (titleTokens.Count == 1 && commandSwitch >= 0 && commandSwitch + 1 < commandWords.Length
+                && TitleTokenizer.Tokenize(commandWords[commandSwitch + 1])
+                    .SequenceEqual(titleTokens, StringComparer.Ordinal)) return ScoreBranch;
+
             var executable = tab.CommandLine
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
                 .FirstOrDefault();

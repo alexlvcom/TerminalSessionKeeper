@@ -33,6 +33,15 @@ public class AgentPathsTests
 public class CodexSessionsTests
 {
     [Fact]
+    public void Resume_id_is_read_from_live_codex_command_line()
+    {
+        const string id = "01a0d4f0-abe4-7bc1-8b0c-d1745595f5d3";
+        Assert.Equal(id, CodexSessions.SessionIdFromCommandLine(
+            $@"C:\tools\codex.exe --dangerously-bypass-approvals-and-sandbox resume {id}"));
+        Assert.Null(CodexSessions.SessionIdFromCommandLine("C:\\tools\\codex.exe app-server"));
+    }
+
+    [Fact]
     public void The_title_after_the_request_marker_is_what_matters()
     {
         // codex stores the entire first user message in "title", preamble and all.

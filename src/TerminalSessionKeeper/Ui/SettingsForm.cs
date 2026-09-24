@@ -47,7 +47,8 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = true;
-        ClientSize = new Size(620, 300);
+        ClientSize = new Size(680, 520);
+        MinimumSize = new Size(620, 440);
         Font = SystemFonts.MessageBoxFont ?? Font;
 
         _autoSnapshot = Check("Take a snapshot automatically", settings.AutoSnapshotEnabled);

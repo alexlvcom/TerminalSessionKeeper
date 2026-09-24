@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Text.RegularExpressions;
 using TerminalSessionKeeper.Logging;
 
 namespace TerminalSessionKeeper.Agents;
@@ -17,6 +18,17 @@ public sealed record CodexThread(string Id, string? Cwd, string? Name, string? T
 /// </summary>
 public sealed class CodexSessions
 {
+    private static readonly Regex ResumeId = new(
+        @"(?:^|\s)resume\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?=\s|$)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static string? SessionIdFromCommandLine(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine)) return null;
+        var match = ResumeId.Match(commandLine);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
     private readonly ILog _log;
     private readonly string _codexHome;
     private readonly Lazy<State> _state;

@@ -5,6 +5,7 @@
 - [The tray menu](#the-tray-menu)
 - [Settings](#settings)
 - [What a restored tab looks like](#what-a-restored-tab-looks-like)
+- [PowerShell directory capture](#powershell-directory-capture)
 - [Titles and colours](#titles-and-colours)
 - [How it finds your sessions](#how-it-finds-your-sessions)
 - [Restoring after a reboot](#restoring-after-a-reboot)
@@ -112,11 +113,44 @@ The command is typed into the tab's console input queue, so the prompt receives 
 exactly as if you had typed it. That works the same for a PowerShell tab — where
 PSReadLine cannot be pre-filled through its own API from outside its prompt — and
 for a WSL tab, where the keystrokes cross the ConPTY into the Linux pty and land on
-the shell's command line. This is why there is no shell-side hook to install.
+the shell's command line. Typing the resume command needs no shell hook.
 
 A WSL tab also gets one short `cd` typed and run first, in case the shell changed
 directory while starting up — that runs *after* `wsl --cd` has applied. If yours does
 not, turn off **Type a cd into each restored WSL tab**.
+
+## PowerShell directory capture
+
+PowerShell's `Set-Location` changes its own location without updating the process
+directory Windows exposes. To capture the current directory after `cd`, add this
+to the end of your PowerShell profile (`$PROFILE`) after any existing prompt setup:
+
+```powershell
+function global:Save-TerminalSessionKeeperLocation {
+    if (-not $env:WT_SESSION -or $env:WT_SESSION -notmatch '^\{?[0-9a-fA-F-]{36}\}?$') { return }
+    $location = Get-Location
+    if ($location.Provider.Name -ne 'FileSystem') { return }
+    $directory = Join-Path $env:LOCALAPPDATA 'TerminalSessionKeeper\PowerShellTabs'
+    try {
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+        [System.IO.File]::WriteAllText(
+            (Join-Path $directory ($env:WT_SESSION.Trim('{}') + '.txt')), $location.Path)
+    } catch { }
+}
+$global:TerminalSessionKeeperPreviousPrompt = $function:prompt
+function global:prompt {
+    Save-TerminalSessionKeeperLocation
+    & $global:TerminalSessionKeeperPreviousPrompt
+}
+```
+
+Run `. $PROFILE` in already open PowerShell tabs, then take a new snapshot. The
+hook records one path per Windows Terminal tab under
+`%LocalAppData%\TerminalSessionKeeper\PowerShellTabs`; without it, PowerShell
+tabs can be saved with their original process directory instead. If your profile
+automatically changes to a shared last-used directory at startup, make that
+startup step conditional on `$env:TERMINAL_SESSION_KEEPER_RESTORE -ne '1'` so
+restored tabs keep their saved `--startingDirectory`.
 
 ### Custom environment variables
 
@@ -211,17 +245,20 @@ environment. That links a WSL shell to its Windows tab exactly. Process start ti
 cannot stand in for it: WSL's clock drifts from the host's across hibernate, by 15
 hours and more in practice, and not by a constant offset.
 
-Session ids come from the running processes themselves — the open
-`/tmp/claude-*/<project>/<session>/` handle for Claude inside WSL, the codex SQLite
-state for Codex — so two tabs in the same folder still get their own conversation.
+Session ids come from agent state and running processes. A Windows Codex process
+launched with `resume <id>` supplies that exact id even when `cmd` and `node`
+wrappers sit between it and PowerShell. Other Codex sessions can be found in its
+SQLite state.
 
-Titles are matched to tabs by content, not by position: dragging a tab changes where
-it sits but not what it is. In order: the shell's own untouched title, then the
+Titles are matched to tabs by content first: dragging a tab changes where it
+sits but not what it is. In order: the shell's own untouched title, then the
 agent's session title, then the **git branch** — which is how a hand-renamed tab
 like `ABC-1022` finds its way back to `my-api`, whose branch is
 `ABC-1022-JWT-Alongside-Session-Auth` — then the folder name. Every tab has exactly
 one title, so if one tab and one title are left over at the end, that pairing is
-forced and gets made. More than one left over is reported rather than guessed at.
+forced and gets made. When at least two strong matches confirm that process creation
+order still matches tab order, remaining titles follow that order. Otherwise,
+unmatched titles are reported.
 
 ## Restoring after a reboot
 
@@ -246,6 +283,7 @@ Everything lives in `%LocalAppData%\TerminalSessionKeeper`:
 | `settings.json` | Your settings |
 | `overrides.json` | Hand-pinned titles and colours |
 | `tab-colors.json` | What the colour sampler has read per tab, and what it has confirmed |
+| `PowerShellTabs\` | Current PowerShell location per Windows Terminal tab, when the prompt hook is installed |
 | `Logs\terminalsessionkeeper.log` | Rotating log |
 
 Uninstalling is deleting the exe and that folder.

@@ -12,6 +12,16 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.2.2", "2026-09-24", new[]
+        {
+            "Made Settings taller so tab content and controls fit without being clipped.",
+            "Capture PowerShell tab directories from the prompt so restored tabs reopen in the right folder and match their titles.",
+            "Preserve tab order when reliable matches align, so identical stale shell directories do not steal each other's titles.",
+            "Pass a restore marker to PowerShell tabs so startup hooks can preserve each saved starting directory.",
+            "Keep terminal prompt colours when the tray app inherited a non-colour automation environment.",
+            "Find Windows agents through shell wrappers and use a running Codex process's exact resume ID.",
+        }),
+
         ("1.2.1", "2026-09-23", new[]
         {
             "Fixed Settings not being saved. Closing the dialog cleared its internal reference",

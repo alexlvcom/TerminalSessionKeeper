@@ -235,9 +235,10 @@ public sealed class SnapshotService
         }
         else if (WindowsShellPattern.IsMatch(child.Name))
         {
-            tab.Cwd = ProcessPeb.CurrentDirectory(child.ProcessId);
+            tab.Cwd = PowerShellTabLocation.Read(wtSession, child.Name)
+                ?? ProcessPeb.CurrentDirectory(child.ProcessId);
 
-            var agentProcess = tree.ChildrenOf(child.ProcessId)
+            var agentProcess = tree.Descendants(child.ProcessId)
                 .FirstOrDefault(grandchild => WindowsAgentPattern.IsMatch(grandchild.Name));
 
             if (agentProcess is null)
@@ -256,7 +257,7 @@ public sealed class SnapshotService
                 tab.Kind = TabKinds.WinAgent;
                 tab.Agent = agent;
 
-                var session = agents.Resolve(agent, tab.Cwd);
+                var session = agents.Resolve(agent, tab.Cwd, ProcessPeb.CommandLine(agentProcess.ProcessId));
                 tab.SessionId = session.SessionId;
                 tab.SessionTitle = session.Title;
                 tab.ResumeCommand = session.ResumeCommand;

@@ -41,10 +41,10 @@ public class WtArgumentsTests
     }
 
     [Fact]
-    public void A_windows_tab_keeps_its_profiles_own_command_line()
+    public void A_windows_tab_keeps_its_profile_and_inherits_restore_environment()
     {
-        // Windows Terminal hands a tab the caller's environment only when the command line is
-        // overridden, so leaving it alone is what gets the tab a clean one.
+        // Supplying the shell command carries the restore marker into its profile, allowing
+        // startup hooks to leave the saved starting directory in place.
         var tab = TabBuilder.Windows(@"C:\projects\TerminalSessionKeeper");
         tab.Title = "TerminalSessionKeeper";
 
@@ -57,6 +57,7 @@ public class WtArgumentsTests
             "-p", "Windows PowerShell",
             "--title", "TerminalSessionKeeper",
             "--startingDirectory", @"C:\projects\TerminalSessionKeeper",
+            "powershell.exe",
         }, arguments);
     }
 

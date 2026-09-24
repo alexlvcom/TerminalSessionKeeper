@@ -61,14 +61,18 @@ public static class WtArguments
 
             case TabKinds.WinAgent:
             case TabKinds.WinShell:
-                // Deliberately left as the profile's own command line. Windows Terminal hands a
-                // tab the caller's environment only when the command line is overridden, so not
-                // overriding it is what guarantees the tab gets the clean environment a fresh
-                // shell would.
                 if (!string.IsNullOrWhiteSpace(tab.Cwd))
                 {
                     arguments.Add("--startingDirectory");
                     arguments.Add(tab.Cwd);
+                }
+
+                // Override the command line for known PowerShell launchers so Windows Terminal
+                // passes the restore-specific environment through. The user's profile may
+                // otherwise cd to a shared last-used directory after --startingDirectory.
+                if (tab.Launcher is "pwsh.exe" or "powershell.exe")
+                {
+                    arguments.Add(tab.Launcher);
                 }
 
                 return arguments;
