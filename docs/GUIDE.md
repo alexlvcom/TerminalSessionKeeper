@@ -69,7 +69,7 @@ Four things and an exit. Everything else lives in one of the two windows.
 |---|---|
 | **Snapshot now** | Save the tabs that are open right now |
 | **Restore last snapshot** | Put them back, in a new window |
-| **Snapshots…** | Every saved snapshot, what is in it, and restore or preview any of them |
+| **Snapshots…** | Every saved snapshot with its tab count, what is in it, and restore (double-click) or preview any of them |
 | **Settings…** | Everything below |
 | **Exit** | |
 

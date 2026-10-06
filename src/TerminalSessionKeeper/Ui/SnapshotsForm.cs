@@ -23,11 +23,21 @@ public sealed class SnapshotsForm : Form
     private readonly TextBox _detail;
     private readonly Button _restoreButton;
     private readonly Button _previewButton;
+    private readonly SplitContainer _split;
 
-    private sealed record Entry(SavedSnapshot Saved)
+    private sealed record Entry(SavedSnapshot Saved, int? TabCount)
     {
-        public override string ToString() =>
-            Saved.SavedAtUtc.ToLocalTime().ToString("yyyy-MM-dd  HH:mm:ss");
+        public override string ToString()
+        {
+            var stamp = Saved.SavedAtUtc.ToLocalTime().ToString("yyyy-MM-dd  HH:mm:ss");
+            var tabs = TabCount switch
+            {
+                null => "  ?",
+                1 => "  1 tab",
+                var n => $"{n,3} tabs",
+            };
+            return $"{stamp}  {tabs}";
+        }
     }
 
     public SnapshotsForm(
@@ -56,6 +66,13 @@ public sealed class SnapshotsForm : Form
         };
 
         _list.SelectedIndexChanged += (_, _) => ShowSelected();
+        _list.DoubleClick += (_, _) => RestoreSelected();
+        _list.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            e.Handled = true;
+            RestoreSelected();
+        };
 
         _detail = new TextBox
         {
@@ -69,10 +86,11 @@ public sealed class SnapshotsForm : Form
             TabStop = false,
         };
 
-        var split = new SplitContainer
+        // The splitter is sized to the list's contents in FitList once the form has a real size;
+        // a fixed pixel distance set here is lost to DPI scaling and the default control width.
+        var split = _split = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 200,
             FixedPanel = FixedPanel.Panel1,
         };
 
@@ -127,14 +145,39 @@ public sealed class SnapshotsForm : Form
         Reload();
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        FitList();
+    }
+
+    /// <summary>Widens the list so every entry — timestamp and tab count — shows without dragging.</summary>
+    private void FitList()
+    {
+        var widest = TextRenderer.MeasureText("Saved snapshots", Font).Width;
+        foreach (var item in _list.Items)
+        {
+            widest = Math.Max(widest, TextRenderer.MeasureText(item.ToString(), _list.Font).Width);
+        }
+
+        var wanted = widest + SystemInformation.VerticalScrollBarWidth + LogicalToDeviceUnits(16);
+        var max = Math.Max(_split.Panel1MinSize, _split.Width / 2);
+        _split.SplitterDistance = Math.Clamp(wanted, _split.Panel1MinSize, max);
+    }
+
     public void Reload()
     {
         var selected = _list.SelectedIndex;
 
         _list.BeginUpdate();
         _list.Items.Clear();
-        foreach (var saved in _store.List()) _list.Items.Add(new Entry(saved));
+        foreach (var saved in _store.List())
+        {
+            _list.Items.Add(new Entry(saved, _store.Load(saved.Path)?.TabCount));
+        }
         _list.EndUpdate();
+
+        if (IsHandleCreated) FitList();
 
         if (_list.Items.Count == 0)
         {

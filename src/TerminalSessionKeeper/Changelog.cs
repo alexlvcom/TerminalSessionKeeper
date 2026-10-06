@@ -12,6 +12,12 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.2.3", "2026-10-06", new[]
+        {
+            "Snapshots window: the list fits each entry without dragging and shows how many tabs each snapshot has.",
+            "Snapshots window: double-click (or Enter) a snapshot to restore it.",
+        }),
+
         ("1.2.2", "2026-09-24", new[]
         {
             "Made Settings taller so tab content and controls fit without being clipped.",
