@@ -7,7 +7,7 @@ namespace TerminalSessionKeeper.Services;
 /// </summary>
 public sealed class SingleInstance : IDisposable
 {
-    private const string MutexName = @"Local\TerminalSessionKeeper.SingleInstance";
+    private const string MutexName = @"TerminalSessionKeeper.Singleton";
     private const string SignalName = @"Local\TerminalSessionKeeper.ActivateSignal";
 
     private readonly Mutex _mutex;

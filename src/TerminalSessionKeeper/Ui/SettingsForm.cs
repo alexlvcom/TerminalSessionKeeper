@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using TerminalSessionKeeper.Services;
 using TerminalSessionKeeper.Settings;
 
@@ -16,6 +18,12 @@ public sealed class SettingsForm : Form
     private readonly AppSettings _settings;
     private readonly StartupManager _startupManager;
     private readonly Icon _icon;
+    private readonly Action<AppSettings>? _onSaveSettings;
+    private readonly Func<Task>? _onCheckForUpdates;
+
+    private readonly TabControl _tabs;
+    private readonly TabPage _updatesTab;
+    private readonly TabPage _aboutTab;
 
     private readonly CheckBox _autoSnapshot;
     private readonly NumericUpDown _interval;
@@ -34,21 +42,28 @@ public sealed class SettingsForm : Form
     /// <summary>The edited copy, valid once the dialog returns OK.</summary>
     public AppSettings Result => _settings;
 
-    public SettingsForm(AppSettings settings, StartupManager startupManager, Icon icon)
+    public SettingsForm(
+        AppSettings settings,
+        StartupManager startupManager,
+        Icon icon,
+        Action<AppSettings>? onSaveSettings = null,
+        Func<Task>? onCheckForUpdates = null)
     {
         _settings = settings;
         _startupManager = startupManager;
         _icon = icon;
+        _onSaveSettings = onSaveSettings;
+        _onCheckForUpdates = onCheckForUpdates;
 
-        Text = $"{AppInfo.DisplayName} — Settings";
+        Text = $"{AppInfo.DisplayName} Settings (v{Changelog.MarketingVersion})";
         Icon = icon;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = true;
-        ClientSize = new Size(680, 520);
-        MinimumSize = new Size(620, 440);
+        ClientSize = new Size(720, 580);
+        MinimumSize = new Size(680, 520);
         Font = SystemFonts.MessageBoxFont ?? Font;
 
         _autoSnapshot = Check("Take a snapshot automatically", settings.AutoSnapshotEnabled);
@@ -84,17 +99,33 @@ public sealed class SettingsForm : Form
             Multiline = true,
             AcceptsReturn = true,
             ScrollBars = ScrollBars.Vertical,
-            Width = 548,
+            Width = 630,
             Height = 58,
         };
 
         _typeCd = Check("Type a cd into each restored WSL tab", settings.TypeCdIntoWslTabs);
 
-        Controls.Add(BuildTabs());
+        _updatesTab = BuildUpdatesTab();
+        _aboutTab = BuildAboutTab();
+        _tabs = BuildTabs();
+        _tabs.TabPages.Add(_updatesTab);
+        _tabs.TabPages.Add(_aboutTab);
+
+        Controls.Add(_tabs);
         Controls.Add(BuildButtons());
 
         _autoSnapshot.CheckedChanged += (_, _) => SyncEnabled();
         SyncEnabled();
+    }
+
+    public void SelectAboutTab()
+    {
+        _tabs.SelectedTab = _aboutTab;
+    }
+
+    public void SelectUpdatesTab()
+    {
+        _tabs.SelectedTab = _updatesTab;
     }
 
     private TabControl BuildTabs()
@@ -151,6 +182,335 @@ public sealed class SettingsForm : Form
         return tabs;
     }
 
+    private TabPage BuildUpdatesTab()
+    {
+        var page = new TabPage("Updates") { UseVisualStyleBackColor = true, Padding = new Padding(20, 18, 20, 18) };
+
+        var desc = new Label
+        {
+            Text = "Choose when Terminal Session Keeper checks GitHub for newer releases and updates.",
+            AutoSize = true,
+            Location = new Point(16, 14),
+        };
+        page.Controls.Add(desc);
+
+        // Status Card
+        var statusCard = new Panel
+        {
+            Location = new Point(16, 42),
+            Size = new Size(656, 68),
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = SystemColors.Window,
+            Padding = new Padding(12),
+        };
+
+        var statusIcon = new Label
+        {
+            Text = "✓",
+            Font = new Font(Font.FontFamily, 14f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(27, 94, 32),
+            Size = new Size(28, 28),
+            Location = new Point(12, 18),
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
+
+        var statusTitle = new Label
+        {
+            Text = "Terminal Session Keeper is up to date",
+            Font = new Font(Font.FontFamily, 9.5f, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(48, 14),
+        };
+
+        var lastCheckText = _settings.LastUpdateCheckUtc.HasValue
+            ? $"Last checked {_settings.LastUpdateCheckUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}"
+            : "Not checked yet";
+
+        var statusSubtitle = new Label
+        {
+            Text = $"Version {Changelog.MarketingVersion} is the latest stable version • {lastCheckText}",
+            ForeColor = SystemColors.GrayText,
+            AutoSize = true,
+            Location = new Point(48, 36),
+        };
+
+        statusCard.Controls.AddRange(new Control[] { statusIcon, statusTitle, statusSubtitle });
+        page.Controls.Add(statusCard);
+
+        int y = 128;
+
+        var freqLabel = new Label
+        {
+            Text = "Check for updates:",
+            AutoSize = true,
+            Location = new Point(16, y + 5),
+            Font = new Font(Font.FontFamily, 9f, FontStyle.Regular),
+        };
+
+        var freqCombo = new ComboBox
+        {
+            Location = new Point(150, y + 2),
+            Size = new Size(180, 24),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        freqCombo.Items.AddRange(new object[]
+        {
+            UpdateCheckFrequency.Daily,
+            UpdateCheckFrequency.Hourly,
+            UpdateCheckFrequency.Weekly,
+            UpdateCheckFrequency.Monthly,
+            UpdateCheckFrequency.Never,
+        });
+        freqCombo.SelectedItem = _settings.CheckFrequency;
+        freqCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (freqCombo.SelectedItem is UpdateCheckFrequency freq)
+            {
+                _settings.CheckFrequency = freq;
+                _onSaveSettings?.Invoke(_settings);
+            }
+        };
+
+        var checkNowBtn = new Button
+        {
+            Text = "Check for updates",
+            Location = new Point(344, y),
+            Size = new Size(140, 28),
+        };
+        checkNowBtn.Click += async (_, _) =>
+        {
+            checkNowBtn.Enabled = false;
+            statusSubtitle.Text = "Checking GitHub for updates...";
+            try
+            {
+                if (_onCheckForUpdates is not null)
+                    await _onCheckForUpdates();
+                statusSubtitle.Text = $"Version {Changelog.MarketingVersion} • Last checked {DateTime.Now:yyyy-MM-dd HH:mm}";
+            }
+            finally
+            {
+                if (!checkNowBtn.IsDisposed) checkNowBtn.Enabled = true;
+            }
+        };
+
+        page.Controls.AddRange(new Control[] { freqLabel, freqCombo, checkNowBtn });
+
+        y += 50;
+
+        // Info Callout Panel
+        var callout = new Panel
+        {
+            Location = new Point(16, y),
+            Size = new Size(656, 84),
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = SystemColors.Window,
+            Padding = new Padding(14),
+        };
+
+        var calloutTitle = new Label
+        {
+            Text = "Reliable automated updates:",
+            Font = new Font(Font.FontFamily, 9f, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(10, 12),
+        };
+
+        var calloutBody = new Label
+        {
+            Text = "Setup installers are downloaded from official GitHub releases and verified with SHA-256 before running. Scheduled background checks stay quiet and never interrupt terminal restoration.",
+            ForeColor = SystemColors.WindowFrame,
+            Location = new Point(10, 32),
+            Size = new Size(630, 42),
+        };
+
+        callout.Controls.AddRange(new Control[] { calloutTitle, calloutBody });
+        page.Controls.Add(callout);
+
+        return page;
+    }
+
+    private TabPage BuildAboutTab()
+    {
+        var page = new TabPage("About") { UseVisualStyleBackColor = true, AutoScroll = true };
+
+        var header = new FlowLayoutPanel
+        {
+            Location = new Point(16, 14),
+            Size = new Size(656, 48),
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+        };
+
+        var iconBox = new PictureBox
+        {
+            Image = _icon.ToBitmap(),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Size = new Size(36, 36),
+            Margin = new Padding(0, 2, 12, 0),
+        };
+        header.Controls.Add(iconBox);
+
+        var titlePanel = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false,
+        };
+
+        var title = new Label
+        {
+            Text = $"{AppInfo.DisplayName}  v{Changelog.MarketingVersion}",
+            Font = new Font(Font.FontFamily, 11f, FontStyle.Bold),
+            AutoSize = true,
+        };
+        var subtitle = new Label
+        {
+            Text = $"Built {Changelog.MarketingDate} • by alexlvcom",
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(Font.FontFamily, 8.5f),
+            AutoSize = true,
+            Margin = new Padding(0, 2, 0, 0),
+        };
+        titlePanel.Controls.Add(title);
+        titlePanel.Controls.Add(subtitle);
+        header.Controls.Add(titlePanel);
+        page.Controls.Add(header);
+
+        int y = 74;
+        int labelX = 16;
+        int textX = 104;
+        int textWidth = 560;
+
+        void AddPathRow(string label, string value, Action? openAction = null)
+        {
+            page.Controls.Add(new Label { Text = label, AutoSize = true, Location = new Point(labelX, y + 3) });
+            page.Controls.Add(new TextBox
+            {
+                Text = value,
+                Location = new Point(textX, y),
+                Size = new Size(openAction is not null ? textWidth - 80 : textWidth, 24),
+                ReadOnly = true,
+                TabStop = false
+            });
+            if (openAction is not null)
+            {
+                var btn = new Button { Text = "Open", Location = new Point(textX + textWidth - 72, y - 1), Size = new Size(72, 26) };
+                btn.Click += (_, _) => openAction();
+                page.Controls.Add(btn);
+            }
+            y += 34;
+        }
+
+        AddPathRow("Executable:", Application.ExecutablePath, () => OpenFolder(Path.GetDirectoryName(Application.ExecutablePath)!));
+        AddPathRow("Settings:", AppPaths.SettingsFile, () => OpenFolder(Path.GetDirectoryName(AppPaths.SettingsFile)!));
+        AddPathRow("Snapshots:", AppPaths.SnapshotDirectory, () => OpenFolder(AppPaths.SnapshotDirectory));
+        AddPathRow("Logs:", AppPaths.LogDirectory, () => OpenFolder(AppPaths.LogDirectory));
+
+        y += 10;
+
+        var notesHeader = new Label
+        {
+            Text = $"Release notes for v{Changelog.MarketingVersion}:",
+            Font = new Font(Font.FontFamily, 9f, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(labelX, y),
+        };
+        page.Controls.Add(notesHeader);
+
+        var fullHistoryLink = new LinkLabel
+        {
+            Text = "View full change history",
+            AutoSize = true,
+            Location = new Point(textX + textWidth - 140, y),
+        };
+        fullHistoryLink.LinkClicked += (_, _) => ShowFullHistory();
+        page.Controls.Add(fullHistoryLink);
+
+        y += 24;
+        var notesText = new TextBox
+        {
+            Location = new Point(labelX, y),
+            Size = new Size(textX + textWidth - labelX, 190),
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Segoe UI", 9f),
+            Text = Changelog.GetReleaseNotes(Changelog.MarketingVersion),
+            TabStop = false,
+        };
+        page.Controls.Add(notesText);
+        y += 198;
+
+        var copyButton = new Button
+        {
+            Text = "Copy details",
+            Location = new Point(labelX, y),
+            Size = new Size(110, 30),
+        };
+        copyButton.Click += (_, _) => CopyDetails();
+        page.Controls.Add(copyButton);
+
+        return page;
+    }
+
+    private void ShowFullHistory()
+    {
+        var history = new Form
+        {
+            Text = $"{AppInfo.DisplayName} Change History",
+            Icon = _icon,
+            FormBorderStyle = FormBorderStyle.Sizable,
+            StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new Size(650, 480),
+            ShowInTaskbar = false,
+        };
+        var box = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Segoe UI", 9f),
+            Text = Changelog.FormatFull(),
+            TabStop = false,
+        };
+        box.SelectionStart = 0;
+        box.SelectionLength = 0;
+        history.Controls.Add(box);
+        history.ShowDialog(this);
+    }
+
+    private void CopyDetails()
+    {
+        var text = string.Join(Environment.NewLine, new[]
+        {
+            $"{AppInfo.DisplayName} v{Changelog.MarketingVersion}",
+            $"Built: {Changelog.MarketingDate}",
+            $"Executable: {Application.ExecutablePath}",
+            $"Settings: {AppPaths.SettingsFile}",
+            $"Snapshots: {AppPaths.SnapshotDirectory}",
+            $"Logs: {AppPaths.LogDirectory}",
+            "",
+            $"Release notes for v{Changelog.MarketingVersion}:",
+            Changelog.GetReleaseNotes(Changelog.MarketingVersion),
+        });
+        Clipboard.SetText(text);
+        MessageBox.Show(this, "Diagnostic details copied to clipboard.", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to open folder: {ex.Message}", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private static TabPage Page(string title, params Control[] contents)
     {
         var page = new TabPage(title) { UseVisualStyleBackColor = true, Padding = new Padding(16, 14, 16, 8) };
@@ -194,13 +554,7 @@ public sealed class SettingsForm : Form
 
         var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
 
-        var about = new Button { Text = "About…", AutoSize = true };
-        about.Click += (_, _) => new AboutForm(_icon).ShowDialog(this);
-
-        var folder = new Button { Text = "Open data folder", AutoSize = true };
-        folder.Click += (_, _) => OpenDataFolder();
-
-        buttons.Controls.AddRange(new Control[] { cancel, save, about, folder });
+        buttons.Controls.AddRange(new Control[] { cancel, save });
 
         AcceptButton = save;
         CancelButton = cancel;
@@ -230,13 +584,13 @@ public sealed class SettingsForm : Form
         {
             Text = text,
             AutoSize = true,
-            MaximumSize = new Size(548, 0),
+            MaximumSize = new Size(630, 0),
             ForeColor = SystemColors.GrayText,
             Tag = NoteTag,
         };
 
     private static Label Caption(string text) =>
-        new() { Text = text, AutoSize = true, MaximumSize = new Size(548, 0) };
+        new() { Text = text, AutoSize = true, MaximumSize = new Size(630, 0) };
 
     private static Control Row(string before, Control field, string after)
     {
@@ -279,25 +633,6 @@ public sealed class SettingsForm : Form
         {
             MessageBox.Show(this, "Could not change the startup setting. See the log for details.",
                 AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
-    private void OpenDataFolder()
-    {
-        try
-        {
-            Directory.CreateDirectory(AppPaths.Root);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = AppPaths.Root,
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException
-                                      or UnauthorizedAccessException or InvalidOperationException)
-        {
-            MessageBox.Show(this, "Could not open the data folder.", AppInfo.DisplayName,
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

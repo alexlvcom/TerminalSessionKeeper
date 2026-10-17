@@ -23,18 +23,12 @@
     <RootNamespace>TerminalSessionKeeper</RootNamespace>
     <AssemblyName>TerminalSessionKeeper</AssemblyName>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <!-- Marketing version: bump the first three parts when Changelog.cs gains an entry. -->
-    <VersionPrefix>1.2.3</VersionPrefix>
-    <!-- Wildcard build/revision auto-changes on every build (needs Deterministic=false),
-         so the About window shows a distinct version per build. -->
-    <AssemblyVersion>1.2.*</AssemblyVersion>
-    <Deterministic>false</Deterministic>
-    <!-- CS7035: the wildcard above is deliberate, so silence the "recommended format" advice
-         rather than letting TreatWarningsAsErrors fail the build on it. -->
-    <NoWarn>$(NoWarn);CS7035</NoWarn>
-    <!-- Must be pinned: without it the SDK derives FileVersion from AssemblyVersion and the
-         literal "1.0.*" ends up in the Win32 version resource. -->
-    <FileVersion>1.2.3.0</FileVersion>
+    <VersionPrefix>1.3.0</VersionPrefix>
+    <Version>1.3.0</Version>
+    <InformationalVersion>1.3.0</InformationalVersion>
+    <FileVersion>1.3.0.0</FileVersion>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
          see AppInfo.cs. -->
     <Product>Terminal Session Keeper</Product>
@@ -71,6 +65,9 @@
 
   <ItemGroup>
     <None Include="Resources\app.ico" />
+    <EmbeddedResource Include="..\..\CHANGELOG.md">
+      <LogicalName>CHANGELOG.md</LogicalName>
+    </EmbeddedResource>
     <!-- The WSL side has to be walked from inside the distro (/proc, and the Linux codex
          state), so the probe is carried in the executable and staged into the distro on
          each snapshot. Nothing is installed into the user's dotfiles. -->

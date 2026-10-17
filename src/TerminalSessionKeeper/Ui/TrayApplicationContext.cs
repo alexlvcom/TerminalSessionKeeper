@@ -35,6 +35,13 @@ public sealed class TrayApplicationContext : ApplicationContext
     private AppSettings _settings;
     private SnapshotsForm? _snapshotsForm;
     private SettingsForm? _settingsForm;
+    private readonly ShutdownListenerWindow _shutdownListener;
+    private readonly UpdateService _updates = new();
+    private readonly CancellationTokenSource _updateCancellation = new();
+    private readonly System.Windows.Forms.Timer _updateTimer = new();
+    private DateTime _nextUpdateCheckUtc = DateTime.MaxValue;
+    private bool _checkingUpdate;
+    private Version? _lastOfferedUpdate;
 
     /// <summary>True while a snapshot or a restore is running, or a dialog is open.</summary>
     private volatile bool _busy;
@@ -98,6 +105,25 @@ public sealed class TrayApplicationContext : ApplicationContext
         _log.Info(_settings.AutoSnapshotEnabled
             ? $"Automatic snapshots are on, every {DescribeInterval()}."
             : "Automatic snapshots are off.");
+
+        _shutdownListener = new ShutdownListenerWindow(Shutdown);
+        _shutdownListener.Show();
+
+        _updateTimer.Interval = (int)TimeSpan.FromMinutes(15).TotalMilliseconds;
+        _updateTimer.Tick += async (_, _) =>
+        {
+            if (DateTime.UtcNow >= _nextUpdateCheckUtc)
+            {
+                await CheckForUpdatesAsync(manual: false);
+                _nextUpdateCheckUtc = UpdateSchedule.NextCheck(DateTime.UtcNow, _settings.CheckFrequency);
+            }
+        };
+
+        ApplyUpdateSchedule();
+        if (_settings.CheckFrequency != UpdateCheckFrequency.Never)
+        {
+            _ = CheckForUpdatesAsync(manual: false);
+        }
 
         ConsiderAutoRestore();
     }
@@ -231,10 +257,11 @@ public sealed class TrayApplicationContext : ApplicationContext
         _snapshotsForm.Activate();
     }
 
-    private void ShowSettings()
+    private void ShowSettings(bool selectAboutTab = false)
     {
         if (_settingsForm is { IsDisposed: false })
         {
+            if (selectAboutTab) _settingsForm.SelectAboutTab();
             _settingsForm.Activate();
             return;
         }
@@ -245,7 +272,15 @@ public sealed class TrayApplicationContext : ApplicationContext
         // Keep this local reference until ShowDialog has returned. FormClosed fires while
         // ShowDialog is unwinding, so reading _settingsForm after that event would lose the
         // saved draft before it ever reaches ApplySettings.
-        var settingsForm = new SettingsForm(draft, _startupManager, _icon);
+        var settingsForm = new SettingsForm(draft, _startupManager, _icon,
+            saved =>
+            {
+                _settings = saved;
+                _settingsStore.Save(_settings);
+                ApplyUpdateSchedule();
+            },
+            () => CheckForUpdatesAsync(manual: true));
+        if (selectAboutTab) settingsForm.SelectAboutTab();
         _settingsForm = settingsForm;
         settingsForm.FormClosed += (_, _) =>
         {
@@ -270,6 +305,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         _settings = settings;
         _settingsStore.Save(_settings);
+        ApplyUpdateSchedule();
 
         _snapshotTimer.Enabled = false;
         _snapshotTimer.Interval = (int)_settings.SnapshotInterval.TotalMilliseconds;
@@ -398,6 +434,102 @@ public sealed class TrayApplicationContext : ApplicationContext
         return withInterval.Length <= 63 ? withInterval : text;
     }
 
+    public void Shutdown()
+    {
+        _log.Info("Shutdown requested by listener.");
+        ExitApplication();
+    }
+
+    private void ApplyUpdateSchedule()
+    {
+        _settings.CheckFrequency = UpdateSchedule.Normalize(_settings.CheckFrequency);
+        _updateTimer.Stop();
+        _nextUpdateCheckUtc = UpdateSchedule.NextCheck(DateTime.UtcNow, _settings.CheckFrequency);
+        if (_settings.CheckFrequency != UpdateCheckFrequency.Never) _updateTimer.Start();
+    }
+
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_checkingUpdate || (!manual && _settings.CheckFrequency == UpdateCheckFrequency.Never)) return;
+        _checkingUpdate = true;
+        try
+        {
+            var update = await _updates.CheckAsync(Version.Parse(Changelog.MarketingVersion), _updateCancellation.Token);
+            _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+            _settingsStore.Save(_settings);
+
+            if (update is null)
+            {
+                if (manual) MessageBox.Show($"You are running version {Changelog.MarketingVersion}.\n\nNo newer installer version is available.", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!manual && _lastOfferedUpdate == update.Version) return;
+            _lastOfferedUpdate = update.Version;
+            ShowUpdateDialog(update);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _log.Error("Update check failed.", ex);
+            if (manual) MessageBox.Show($"Could not check for updates. Please try again later.\n\n{ex.Message}", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { _checkingUpdate = false; }
+    }
+
+    private void ShowUpdateDialog(AppUpdate update)
+    {
+        using var dialog = new Form
+        {
+            Text = $"Update {AppInfo.DisplayName} (v{Changelog.MarketingVersion})",
+            StartPosition = FormStartPosition.CenterScreen,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = true,
+            ClientSize = new Size(470, 200),
+            Icon = _icon,
+        };
+        var message = new Label
+        {
+            Text = $"Version {update.Version} is available. You have {Changelog.MarketingVersion}.\n\nUpdate will download and open the installer. Setup will close the app and restart it after updating.",
+            Location = new Point(18, 18),
+            Size = new Size(434, 115),
+        };
+        var install = new Button { Text = "Update", Location = new Point(268, 152), Size = new Size(88, 30) };
+        var later = new Button { Text = "Later", Location = new Point(364, 152), Size = new Size(88, 30), DialogResult = DialogResult.Cancel };
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_updateCancellation.Token);
+        cancellation.CancelAfter(TimeSpan.FromMinutes(10));
+        dialog.FormClosing += (_, _) => cancellation.Cancel();
+        install.Click += async (_, _) =>
+        {
+            install.Enabled = false;
+            message.Text = "Downloading and verifying the installer…";
+            try
+            {
+                var cache = Path.Combine(AppPaths.Root, "Updates");
+                var installer = await _updates.DownloadAsync(update, cache, cancellation.Token);
+                if (dialog.IsDisposed) return;
+                _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = installer,
+                    UseShellExecute = true,
+                }) ?? throw new InvalidOperationException("Windows could not open the installer.");
+                dialog.Close();
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                if (dialog.IsDisposed) return;
+                message.Text = $"Update failed. Please try again.\n\n{ex.Message}";
+                install.Enabled = true;
+            }
+        };
+        dialog.Controls.AddRange(new Control[] { message, install, later });
+        dialog.AcceptButton = install;
+        dialog.CancelButton = later;
+        dialog.ShowDialog();
+    }
+
     private void ExitApplication()
     {
         _log.Info("Exiting.");
@@ -410,6 +542,12 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         if (disposing)
         {
+            _updateTimer.Stop();
+            _updateTimer.Dispose();
+            _updateCancellation.Cancel();
+            _updateCancellation.Dispose();
+            _updates.Dispose();
+            _shutdownListener.Dispose();
             _snapshotTimer.Stop();
             _snapshotTimer.Dispose();
             _notifyIcon.Visible = false;

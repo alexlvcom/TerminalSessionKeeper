@@ -77,6 +77,15 @@ public sealed class AppSettings
     /// </summary>
     public bool TypeCdIntoWslTabs { get; set; } = true;
 
+    /// <summary>How often Terminal Session Keeper checks GitHub for releases.</summary>
+    public UpdateCheckFrequency CheckFrequency { get; set; } = UpdateCheckFrequency.Daily;
+
+    /// <summary>Last time an update check was performed in UTC.</summary>
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>A release version the user chose to skip for background notifications.</summary>
+    public string? SkippedUpdateVersion { get; set; }
+
     /// <summary>
     /// Boot time of the session an automatic restore last ran in. Stops a second automatic
     /// restore inside one boot — the app restarting must not rebuild the tabs again.
