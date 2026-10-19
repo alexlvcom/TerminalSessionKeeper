@@ -30,10 +30,14 @@ at all.
 
 ## Install
 
-Download **[TerminalSessionKeeper.exe](https://github.com/alexlvcom/TerminalSessionKeeper/releases/latest/download/TerminalSessionKeeper.exe)**
-and double-click it. It is a single self-contained executable — no .NET runtime
-needed, no installer. It runs without administrator privileges and never asks for
-elevation.
+Download **[TerminalSessionKeeper-Setup.exe](https://github.com/alexlvcom/TerminalSessionKeeper/releases/latest/download/TerminalSessionKeeper-Setup.exe)**
+and run it. Setup installs to `%LOCALAPPDATA%\Programs\Terminal Session Keeper`
+without administrator privileges and preserves your settings and snapshots during upgrades.
+
+The app checks for updates at startup and daily by default. Choose the interval or
+check manually in Settings; manual checking is also available in About. **Update**
+downloads and verifies the installer. The download timeout starts on that click;
+a timeout shows an error and lets you retry.
 
 Open **Settings…** from its tray menu, tick **Start with Windows**, and you are
 done.

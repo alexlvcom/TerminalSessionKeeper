@@ -498,16 +498,17 @@ public sealed class TrayApplicationContext : ApplicationContext
         var install = new Button { Text = "Update", Location = new Point(268, 152), Size = new Size(88, 30) };
         var later = new Button { Text = "Later", Location = new Point(364, 152), Size = new Size(88, 30), DialogResult = DialogResult.Cancel };
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_updateCancellation.Token);
-        cancellation.CancelAfter(TimeSpan.FromMinutes(10));
         dialog.FormClosing += (_, _) => cancellation.Cancel();
         install.Click += async (_, _) =>
         {
             install.Enabled = false;
             message.Text = "Downloading and verifying the installer…";
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
+            attempt.CancelAfter(TimeSpan.FromMinutes(10));
             try
             {
                 var cache = Path.Combine(AppPaths.Root, "Updates");
-                var installer = await _updates.DownloadAsync(update, cache, cancellation.Token);
+                var installer = await _updates.DownloadAsync(update, cache, attempt.Token);
                 if (dialog.IsDisposed) return;
                 _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
@@ -517,6 +518,12 @@ public sealed class TrayApplicationContext : ApplicationContext
                 dialog.Close();
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (OperationCanceledException)
+            {
+                if (dialog.IsDisposed) return;
+                message.Text = "The download timed out. Check your connection and click Update to try again.";
+                install.Enabled = true;
+            }
             catch (Exception ex)
             {
                 if (dialog.IsDisposed) return;

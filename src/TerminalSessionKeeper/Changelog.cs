@@ -12,6 +12,10 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.3.1", "2026-10-19", new[]
+        {
+            "Start the update download timeout when Update is clicked. Report timeouts and allow retrying instead of leaving the download dialog stuck.",
+        }),
         ("1.3.0", "2026-10-17", new[]
         {
             "New: Windows installer (TerminalSessionKeeper-Setup.exe) installing per-user to %LOCALAPPDATA%\\Programs\\Terminal Session Keeper with automatic upgrade shutdown.",

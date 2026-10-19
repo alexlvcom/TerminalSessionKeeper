@@ -2,6 +2,10 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## [1.3.1] - 2026-10-19
+
+- Start the update download timeout when Update is clicked. Report timeouts and allow retrying instead of leaving the download dialog stuck.
+
 ## [1.3.0] - 2026-10-17
 
 ### Main changes
