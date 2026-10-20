@@ -6,7 +6,7 @@
 - After implementing a user-visible app change, publish and deploy it to the local installation, then restart the running app so the user can test the result.
 - Keep version values in `src/TerminalSessionKeeper/TerminalSessionKeeper.csproj` in sync: `Version` and `InformationalVersion` use `N.N.N`; `FileVersion` and `AssemblyVersion` use `N.N.N.0`.
 - Do not include commit hashes, source revision IDs, or other unique build identifiers in the About window version.
-- Put versions in window titles in parentheses, e.g. `About Terminal Session Keeper (v1.3.0)` or `Terminal Session Keeper Settings (v1.3.0)`, rather than after a dash.
+- Never put the version in a window title. Set `TitleVersion` (e.g. `v1.4.0`) on the window instead: the kit draws it right-aligned in the title row, without brackets. On Settings and main windows clicking it opens Updates; update dialogs show it as plain text. Small update-result popups keep the version only in their message.
 
 ## Installer and local deployment
 

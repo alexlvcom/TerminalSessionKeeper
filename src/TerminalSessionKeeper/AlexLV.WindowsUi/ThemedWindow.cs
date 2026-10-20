@@ -94,11 +94,21 @@ public class ThemedWindow : Window
         if (ResizeMode != ResizeMode.NoResize)
             AddRight(row, CaptionButton("\uE921", "Minimize", "CaptionButton", () => SystemCommands.MinimizeWindow(this)));
 
-        _version = new Button { ToolTip = "Show updates" };
+        _version = new Button();
         _version.SetResourceReference(StyleProperty, "TitleVersionButton");
-        _version.Click += (_, _) => VersionClick?.Invoke(this, EventArgs.Empty);
-        WindowChrome.SetIsHitTestVisibleInChrome(_version, true);
-        System.Windows.Automation.AutomationProperties.SetName(_version, "Show updates");
+        if (VersionClick is not null)
+        {
+            _version.ToolTip = "Show updates";
+            _version.Click += (_, _) => VersionClick?.Invoke(this, EventArgs.Empty);
+            WindowChrome.SetIsHitTestVisibleInChrome(_version, true);
+            System.Windows.Automation.AutomationProperties.SetName(_version, "Show updates");
+        }
+        else
+        {
+            // Nothing to open (an update dialog): plain text the window can be dragged by.
+            _version.IsHitTestVisible = false;
+            System.Windows.Automation.AutomationProperties.SetName(_version, "Version");
+        }
         UpdateVersionText();
         AddRight(row, _version);
 
@@ -122,7 +132,28 @@ public class ThemedWindow : Window
         root.Children.Add(row);
         if (content is not null) root.Children.Add(content);
         Content = root;
+
+        // A maximized custom frame extends past the monitor by the sizing frame; inset by it so
+        // the title row and edges stay on screen.
+        void FitMaximized() => root.Margin = WindowState == WindowState.Maximized ? MaximizedInset() : new Thickness(0);
+        StateChanged += (_, _) => FitMaximized();
+        FitMaximized();
     }
+
+    private Thickness MaximizedInset()
+    {
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
+        var x = (GetSystemMetrics(SmCxSizeFrame) + GetSystemMetrics(SmCxPaddedBorder)) / dpi.DpiScaleX;
+        var y = (GetSystemMetrics(SmCySizeFrame) + GetSystemMetrics(SmCxPaddedBorder)) / dpi.DpiScaleY;
+        return new Thickness(x, y, x, y);
+    }
+
+    private const int SmCxSizeFrame = 32;
+    private const int SmCySizeFrame = 33;
+    private const int SmCxPaddedBorder = 92;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     private void UpdateVersionText()
     {
