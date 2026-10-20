@@ -1,6 +1,7 @@
 using System.Text.Json;
 using TerminalSessionKeeper.Logging;
 using TerminalSessionKeeper.Model;
+using TerminalSessionKeeper.Services;
 using TerminalSessionKeeper.Settings;
 using TerminalSessionKeeper.Snapshots;
 
@@ -56,6 +57,29 @@ public class AppSettingsTests
         // A dozen agents and their MCP servers booting at once, right after a reboot, is the
         // worst possible moment for it.
         Assert.False(new AppSettings().AutoResume);
+    }
+
+    [Fact]
+    public void Saving_settings_reports_success_and_leaves_no_temporary_file()
+    {
+        using var directory = new TempDirectory();
+        var path = directory.File("settings.json");
+
+        Assert.True(new SettingsStore(NullLog.Instance, path).Save(new AppSettings { CheckFrequency = UpdateCheckFrequency.Hourly }));
+
+        Assert.Equal(UpdateCheckFrequency.Hourly, new SettingsStore(NullLog.Instance, path).Load().CheckFrequency);
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void Saving_settings_reports_failure_when_the_file_cannot_be_written()
+    {
+        using var directory = new TempDirectory();
+        // A directory where the file should be makes the final move fail.
+        var path = directory.File("settings.json");
+        Directory.CreateDirectory(path);
+
+        Assert.False(new SettingsStore(NullLog.Instance, path).Save(new AppSettings()));
     }
 
     [Fact]

@@ -12,6 +12,12 @@ public static class Changelog
     /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
     public static readonly (string Version, string Date, string[] Notes)[] Entries =
     {
+        ("1.3.2", "2026-10-20", new[]
+        {
+            "Settings now saves every preference, including the update check frequency, only when you click Save. Cancel, Esc, or closing the window discards all unsaved changes.",
+            "Save reports an error and keeps Settings open with your edits when settings.json cannot be written.",
+            "Settings are written through a temporary file so a failed save never leaves a half-written settings.json.",
+        }),
         ("1.3.1", "2026-10-19", new[]
         {
             "Start the update download timeout when Update is clicked. Report timeouts and allow retrying instead of leaving the download dialog stuck.",

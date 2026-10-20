@@ -2,6 +2,16 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## [1.3.2] - 2026-10-20
+
+### Main changes
+- Settings now saves every preference, including the update check frequency, only when you click Save. Cancel, Esc, or closing the window discards all unsaved changes, so Cancel always undoes a frequency change.
+- Save reports an error and keeps Settings open with your edits when settings.json cannot be written, instead of closing as if it had worked.
+
+### Other updates
+- Settings are written through a temporary file so a failed save never leaves a half-written settings.json.
+- Saving Settings keeps the last update check time recorded while the window was open.
+
 ## [1.3.1] - 2026-10-19
 
 - Start the update download timeout when Update is clicked. Report timeouts and allow retrying instead of leaving the download dialog stuck.

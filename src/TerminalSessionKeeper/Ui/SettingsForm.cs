@@ -18,7 +18,7 @@ public sealed class SettingsForm : Form
     private readonly AppSettings _settings;
     private readonly StartupManager _startupManager;
     private readonly Icon _icon;
-    private readonly Action<AppSettings>? _onSaveSettings;
+    private readonly Func<AppSettings, bool>? _onSaveSettings;
     private readonly Func<Task>? _onCheckForUpdates;
 
     private readonly TabControl _tabs;
@@ -39,14 +39,11 @@ public sealed class SettingsForm : Form
     private readonly TextBox _wslEnvironment;
     private readonly CheckBox _typeCd;
 
-    /// <summary>The edited copy, valid once the dialog returns OK.</summary>
-    public AppSettings Result => _settings;
-
     public SettingsForm(
         AppSettings settings,
         StartupManager startupManager,
         Icon icon,
-        Action<AppSettings>? onSaveSettings = null,
+        Func<AppSettings, bool>? onSaveSettings = null,
         Func<Task>? onCheckForUpdates = null)
     {
         _settings = settings;
@@ -264,11 +261,8 @@ public sealed class SettingsForm : Form
         freqCombo.SelectedItem = _settings.CheckFrequency;
         freqCombo.SelectedIndexChanged += (_, _) =>
         {
-            if (freqCombo.SelectedItem is UpdateCheckFrequency freq)
-            {
-                _settings.CheckFrequency = freq;
-                _onSaveSettings?.Invoke(_settings);
-            }
+            // Part of the draft like every other preference: Save applies it, Cancel discards it.
+            if (freqCombo.SelectedItem is UpdateCheckFrequency freq) _settings.CheckFrequency = freq;
         };
 
         var checkNowBtn = new Button
@@ -549,8 +543,9 @@ public sealed class SettingsForm : Form
             Padding = new Padding(12, 8, 12, 12),
         };
 
-        var save = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
-        save.Click += (_, _) => Apply();
+        // No DialogResult: the window closes only once the draft has actually been saved.
+        var save = new Button { Text = "Save", AutoSize = true };
+        save.Click += (_, _) => Save();
 
         var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
 
@@ -609,6 +604,21 @@ public sealed class SettingsForm : Form
         return row;
     }
 
+    private void Save()
+    {
+        Apply();
+        if (_onSaveSettings is not null && !_onSaveSettings(_settings))
+        {
+            MessageBox.Show(this,
+                $"Could not save settings to {AppPaths.SettingsFile}. Your changes are still here; check the log, then try Save again.",
+                AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        ApplyStartup();
+        DialogResult = DialogResult.OK;
+    }
+
     private void Apply()
     {
         _settings.AutoSnapshotEnabled = _autoSnapshot.Checked;
@@ -625,7 +635,10 @@ public sealed class SettingsForm : Form
 
         var windowName = _windowName.Text.Trim();
         if (windowName.Length > 0) _settings.RestoreWindowName = windowName;
+    }
 
+    private void ApplyStartup()
+    {
         // Autostart lives in the registry rather than in settings.json, so it is applied here
         // instead of being saved with the rest.
         if (_startWithWindows.Checked != _startupManager.IsEnabled

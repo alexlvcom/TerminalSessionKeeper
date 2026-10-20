@@ -165,19 +165,27 @@ public sealed class SettingsStore
         }
     }
 
-    public void Save(AppSettings settings)
+    /// <summary>
+    /// Writes through a temporary file, so a failed write never leaves a half-written
+    /// settings.json. Returns false when the file could not be written.
+    /// </summary>
+    public bool Save(AppSettings settings)
     {
         try
         {
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-            File.WriteAllText(_path, JsonSerializer.Serialize(settings, Options));
+            var temp = _path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(settings, Options));
+            File.Move(temp, _path, overwrite: true);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or ArgumentException or NotSupportedException)
         {
             _log.Warn($"Could not save settings. {ex.Message}");
+            return false;
         }
     }
 }

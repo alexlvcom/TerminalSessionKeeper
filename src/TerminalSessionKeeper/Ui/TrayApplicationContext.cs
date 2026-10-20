@@ -269,16 +269,9 @@ public sealed class TrayApplicationContext : ApplicationContext
         // A copy, so Cancel really cancels.
         var draft = _settingsStore.Load();
 
-        // Keep this local reference until ShowDialog has returned. FormClosed fires while
-        // ShowDialog is unwinding, so reading _settingsForm after that event would lose the
-        // saved draft before it ever reaches ApplySettings.
-        var settingsForm = new SettingsForm(draft, _startupManager, _icon,
-            saved =>
-            {
-                _settings = saved;
-                _settingsStore.Save(_settings);
-                ApplyUpdateSchedule();
-            },
+        // Save hands the draft to ApplySettings and closes the window only when it was written,
+        // so a failed save keeps the user's edits on screen.
+        var settingsForm = new SettingsForm(draft, _startupManager, _icon, ApplySettings,
             () => CheckForUpdatesAsync(manual: true));
         if (selectAboutTab) settingsForm.SelectAboutTab();
         _settingsForm = settingsForm;
@@ -293,7 +286,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
-            if (settingsForm.ShowDialog() == DialogResult.OK) ApplySettings(settingsForm.Result);
+            settingsForm.ShowDialog();
         }
         finally
         {
@@ -301,10 +294,15 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void ApplySettings(AppSettings settings)
+    private bool ApplySettings(AppSettings settings)
     {
+        // Bookkeeping the app wrote while the window was open is not part of the draft.
+        settings.LastUpdateCheckUtc = _settings.LastUpdateCheckUtc;
+        settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
+        settings.LastAutoRestoreBootTimeUtc = _settings.LastAutoRestoreBootTimeUtc;
+        if (!_settingsStore.Save(settings)) return false;
+
         _settings = settings;
-        _settingsStore.Save(_settings);
         ApplyUpdateSchedule();
 
         _snapshotTimer.Enabled = false;
@@ -316,6 +314,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _log.Info(_settings.AutoSnapshotEnabled
             ? $"Automatic snapshots are on, every {DescribeInterval()}."
             : "Automatic snapshots are off.");
+        return true;
     }
 
     // -------------------------------------------------------------- plumbing

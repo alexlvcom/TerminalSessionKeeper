@@ -90,6 +90,13 @@ Four things and an exit. Everything else lives in one of the two windows.
 | **Type a cd into each restored WSL tab** | On by default, in case the shell changes directory while starting up |
 | **Show a notification** | After a snapshot or a restore |
 | **Start with Windows** | `HKCU\...\CurrentVersion\Run`. No elevation, no scheduled task |
+| **Check for updates** | Hourly, daily (default), weekly, monthly, or never, on the Updates tab |
+
+Every tab shares one **Save** / **Cancel** footer. Changes, including the update
+check frequency, take effect only when you click **Save**, and apply at once
+without restarting. **Cancel**, Esc, or closing the window discards them. If
+`settings.json` cannot be written, Save shows an error and keeps your edits open.
+**Check for updates**, **Open**, and **Copy details** act immediately.
 
 ## What a restored tab looks like
 
