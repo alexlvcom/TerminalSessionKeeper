@@ -317,6 +317,9 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         // Bookkeeping the app wrote while the window was open is not part of the draft.
         settings.LastUpdateCheckUtc = _settings.LastUpdateCheckUtc;
+        settings.LastUpdateOutcome = _settings.LastUpdateOutcome;
+        settings.LastUpdateAvailableVersion = _settings.LastUpdateAvailableVersion;
+        settings.LastUpdateFailure = _settings.LastUpdateFailure;
         settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
         settings.LastAutoRestoreBootTimeUtc = _settings.LastAutoRestoreBootTimeUtc;
         if (!_settingsStore.Save(settings)) return false;
@@ -483,14 +486,12 @@ public sealed class TrayApplicationContext : ApplicationContext
         try
         {
             var update = await _updates.CheckAsync(Version.Parse(current), _updateCancellation.Token);
-            _settings.LastUpdateCheckUtc = DateTime.UtcNow;
-            _settingsStore.Save(_settings);
-            var checkedAt = $"Last checked {DateTime.Now:yyyy-MM-dd HH:mm}";
+            RecordUpdateCheck(update is null ? UpdateCheckOutcome.Current : UpdateCheckOutcome.Available,
+                update?.Version.ToString(3), failure: null);
 
             if (update is null) return UpdateStatus.Latest(current, DateTime.Now);
 
-            var available = new UpdateStatus(UpdateState.Available, $"Version {update.Version.ToString(3)} is available",
-                $"You have {current} · {checkedAt}");
+            var available = UpdateStatus.Available(current, update.Version.ToString(3), DateTime.Now);
             if (!manual && _lastOfferedUpdate == update.Version) return available;
             _lastOfferedUpdate = update.Version;
             ShowUpdateDialog(update);
@@ -503,9 +504,20 @@ public sealed class TrayApplicationContext : ApplicationContext
         catch (Exception ex)
         {
             _log.Error("Update check failed.", ex);
+            RecordUpdateCheck(UpdateCheckOutcome.Failed, availableVersion: null, ex.Message);
             return UpdateStatus.Failed(current, ex.Message);
         }
         finally { _checkingUpdate = false; }
+    }
+
+    /// <summary>Keeps what a completed check found, so Settings → Updates can show it when it next opens.</summary>
+    private void RecordUpdateCheck(UpdateCheckOutcome outcome, string? availableVersion, string? failure)
+    {
+        _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+        _settings.LastUpdateOutcome = outcome;
+        _settings.LastUpdateAvailableVersion = availableVersion;
+        _settings.LastUpdateFailure = failure;
+        _settingsStore.Save(_settings);
     }
 
     private void ShowUpdateDialog(AppUpdate update)

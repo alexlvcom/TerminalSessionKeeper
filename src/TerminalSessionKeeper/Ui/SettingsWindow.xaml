@@ -229,6 +229,8 @@
           <TextBlock Text="Choose when Terminal Session Keeper checks GitHub for newer releases and updates." Style="{StaticResource LeadText}"/>
           <Border Style="{StaticResource Card}" Padding="16">
             <DockPanel>
+              <Button x:Name="UpdateNowButton" DockPanel.Dock="Right" Content="Update" Style="{StaticResource PrimaryButton}"
+                      VerticalAlignment="Center" Visibility="Collapsed" Click="CheckNow_Click"/>
               <Ellipse x:Name="UpdateDot" Width="10" Height="10" Margin="0,0,14,0" VerticalAlignment="Center" Fill="{DynamicResource Ok}"/>
               <StackPanel>
                 <TextBlock x:Name="UpdateTitle" Style="{StaticResource StrongText}"/>

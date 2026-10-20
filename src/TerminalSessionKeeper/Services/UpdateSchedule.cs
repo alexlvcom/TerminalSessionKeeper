@@ -9,6 +9,14 @@ public enum UpdateCheckFrequency
     Never = 4,
 }
 
+/// <summary>What a completed update check found. Stored in settings, so values are fixed.</summary>
+public enum UpdateCheckOutcome
+{
+    Current = 0,
+    Available = 1,
+    Failed = 2,
+}
+
 public static class UpdateSchedule
 {
     public static UpdateCheckFrequency Normalize(UpdateCheckFrequency frequency) =>

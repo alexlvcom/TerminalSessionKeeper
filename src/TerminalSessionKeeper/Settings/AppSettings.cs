@@ -87,6 +87,18 @@ public sealed class AppSettings
     /// <summary>Last time an update check was performed in UTC.</summary>
     public DateTime? LastUpdateCheckUtc { get; set; }
 
+    /// <summary>
+    /// What the last completed update check found, so Settings → Updates can show it on open.
+    /// Absent in settings written before 1.4.0, which kept only the check time.
+    /// </summary>
+    public UpdateCheckOutcome? LastUpdateOutcome { get; set; }
+
+    /// <summary>The newer release the last check found, when <see cref="LastUpdateOutcome"/> is Available.</summary>
+    public string? LastUpdateAvailableVersion { get; set; }
+
+    /// <summary>Why the last check failed, when <see cref="LastUpdateOutcome"/> is Failed.</summary>
+    public string? LastUpdateFailure { get; set; }
+
     /// <summary>A release version the user chose to skip for background notifications.</summary>
     public string? SkippedUpdateVersion { get; set; }
 

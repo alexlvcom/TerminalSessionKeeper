@@ -11,6 +11,7 @@ All notable changes to Terminal Session Keeper are documented here. Format follo
 
 ### Other updates
 - Check for updates in Settings → Updates reports its result in the status card: "You're running the latest version (v1.4.0)" with the check time, or why the check failed. No message box opens unless a newer version is available.
+- Settings → Updates opens with what the last check actually found: a newer version with an Update button, the latest-version message, or the failure and its reason.
 - Setup and uninstall now close a running copy cleanly. Before, the hidden window they ask to close never existed, so setup force-closed the app after a delay.
 - The snapshot interval and the number of snapshots kept are checked on Save: a value outside 1–1440 minutes or 1–500 snapshots is reported beside the field instead of being changed silently.
 - The footer shows how many changes are not saved yet.

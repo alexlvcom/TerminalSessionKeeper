@@ -30,6 +30,41 @@ public sealed record UpdateStatus(UpdateState State, string Title, string Detail
     /// <summary>A failed check: the card shows the reason in place, with no dialog.</summary>
     public static UpdateStatus Failed(string version, string reason) =>
         new(UpdateState.Failed, "Could not check for updates", $"Running v{version} · {reason}");
+
+    /// <summary>A newer release: the card offers Update, which opens the Update / Later dialog.</summary>
+    public static UpdateStatus Available(string version, string newer, DateTime checkedAtLocal) =>
+        new(UpdateState.Available, $"Version {newer} is available",
+            $"You have v{version} · Last checked {checkedAtLocal:yyyy-MM-dd HH:mm}");
+
+    /// <summary>
+    /// The card on open: what the last recorded check actually found, never an assumed result.
+    /// A newer version that is already the running one counts as current.
+    /// </summary>
+    public static UpdateStatus FromLastCheck(AppSettings settings, string currentVersion)
+    {
+        if (settings.LastUpdateCheckUtc is not { } checkedUtc)
+            return new UpdateStatus(UpdateState.NotChecked, "Not checked yet", $"Version {currentVersion} · Use Check for updates to look now");
+
+        var checkedAt = checkedUtc.ToLocalTime();
+        switch (settings.LastUpdateOutcome)
+        {
+            case UpdateCheckOutcome.Current:
+                return Latest(currentVersion, checkedAt);
+            case UpdateCheckOutcome.Available
+                when Version.TryParse(settings.LastUpdateAvailableVersion, out var newer)
+                     && Version.TryParse(currentVersion, out var current):
+                return newer > current
+                    ? Available(currentVersion, newer.ToString(3), checkedAt)
+                    : Latest(currentVersion, checkedAt);
+            case UpdateCheckOutcome.Failed:
+                var failed = Failed(currentVersion, settings.LastUpdateFailure ?? "The check did not finish");
+                return failed with { Detail = $"{failed.Detail} · Last tried {checkedAt:yyyy-MM-dd HH:mm}" };
+            default:
+                // Settings from before 1.4.0 kept only the time, not what the check found.
+                return new UpdateStatus(UpdateState.NotChecked, $"Last checked {checkedAt:yyyy-MM-dd HH:mm}",
+                    $"Version {currentVersion} · Use Check for updates to see the result");
+        }
+    }
 }
 
 /// <summary>
@@ -96,10 +131,7 @@ public partial class SettingsWindow : ThemedWindow
         foreach (var text in new[] { Interval, Keep, WindowName, WslEnvironment }) text.TextChanged += (_, _) => OnEdited();
         Frequency.SelectionChanged += (_, _) => OnEdited();
 
-        ShowUpdateStatus(draft.LastUpdateCheckUtc is { } checkedAt
-            ? UpdateStatus.Latest(Changelog.MarketingVersion, checkedAt.ToLocalTime())
-            : new UpdateStatus(UpdateState.NotChecked, "Not checked yet",
-                $"Version {Changelog.MarketingVersion} · Use Check for updates to look now"));
+        ShowUpdateStatus(UpdateStatus.FromLastCheck(draft, Changelog.MarketingVersion));
 
         BuildAbout();
         BuildDiagnostics();
@@ -268,6 +300,7 @@ public partial class SettingsWindow : ThemedWindow
     private async void CheckNow_Click(object sender, RoutedEventArgs e)
     {
         CheckNowButton.IsEnabled = false;
+        UpdateNowButton.IsEnabled = false;
         ShowUpdateStatus(new UpdateStatus(UpdateState.Checking, "Checking for updates…", "Contacting GitHub releases"));
         try
         {
@@ -276,11 +309,14 @@ public partial class SettingsWindow : ThemedWindow
         finally
         {
             CheckNowButton.IsEnabled = true;
+            UpdateNowButton.IsEnabled = true;
         }
     }
 
     private void ShowUpdateStatus(UpdateStatus status)
     {
+        // A recorded newer release offers Update; a manual check of it opens the Update / Later dialog.
+        UpdateNowButton.Visibility = status.State == UpdateState.Available ? Visibility.Visible : Visibility.Collapsed;
         UpdateTitle.Text = status.Title;
         UpdateDetail.Text = status.Detail;
         UpdateDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, status.State switch
