@@ -10,6 +10,7 @@ All notable changes to Terminal Session Keeper are documented here. Format follo
 - Settings fits every tab without scrolling. Diagnostics (the executable, settings, snapshots and logs paths, and Copy details) moved out of About into a tab of its own.
 
 ### Other updates
+- Setup and uninstall now close a running copy cleanly. Before, the hidden window they ask to close never existed, so setup force-closed the app after a delay.
 - The snapshot interval and the number of snapshots kept are checked on Save: a value outside 1–1440 minutes or 1–500 snapshots is reported beside the field instead of being changed silently.
 - The footer shows how many changes are not saved yet.
 - The update dialog shows download progress and offers Try again after a timeout or failure.

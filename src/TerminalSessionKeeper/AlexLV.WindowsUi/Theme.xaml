@@ -370,7 +370,8 @@
               <TabPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1"/>
             </Border>
             <Border Background="{TemplateBinding Background}">
-              <ContentPresenter ContentSource="SelectedContent" Margin="24,22"/>
+              <!-- The name is what makes WPF expose the selected tab content to UI Automation. -->
+              <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="24,22"/>
             </Border>
           </DockPanel>
         </ControlTemplate>

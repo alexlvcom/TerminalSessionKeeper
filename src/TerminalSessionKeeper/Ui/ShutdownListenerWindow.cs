@@ -16,6 +16,9 @@ internal sealed class ShutdownListenerWindow : Form
         FormBorderStyle = FormBorderStyle.None;
         Size = Size.Empty;
         Opacity = 0;
+        // SetVisibleCore keeps this form hidden, so Show() never creates its handle and setup's
+        // FindWindow(Text) would find nothing. Create the handle now so WM_CLOSE can reach it.
+        CreateHandle();
     }
 
     protected override void SetVisibleCore(bool value) => base.SetVisibleCore(false);

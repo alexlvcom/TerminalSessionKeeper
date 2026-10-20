@@ -82,4 +82,7 @@
     <EmbeddedResource Include="Terminal\snapshot-agents.py" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="TerminalSessionKeeper.Tests" />
+  </ItemGroup>
 </Project>
