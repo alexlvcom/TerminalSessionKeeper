@@ -12,6 +12,8 @@ to save their current location accurately.
 
 ![Terminal Session Keeper tray menu](TerminalSessionKeeper-Tray.png)
 
+![Terminal Session Keeper settings](TerminalSessionKeeper-Settings.png)
+
 ## Features
 
 - **Snapshots your tabs** — directory, title, colour and the agent session running in each one, automatically every 10 minutes.
