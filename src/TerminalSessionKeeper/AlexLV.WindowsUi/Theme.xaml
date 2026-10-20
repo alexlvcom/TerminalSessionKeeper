@@ -302,16 +302,25 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="CheckBox">
+          <!-- Off is an outlined track with a dark knob (Windows 11), so it never reads as disabled;
+               disabled alone fades the whole switch. -->
           <Grid Width="40" Height="22" Background="Transparent">
-            <Border x:Name="Track" CornerRadius="11" Background="{DynamicResource Border}"/>
-            <Ellipse x:Name="Knob" Width="16" Height="16" Fill="{DynamicResource Raised}" HorizontalAlignment="Left"
-                     Margin="3,0,0,0"/>
+            <Border x:Name="Track" CornerRadius="11" Background="{DynamicResource Raised}"
+                    BorderBrush="{DynamicResource Muted}" BorderThickness="1"/>
+            <Ellipse x:Name="Knob" Width="12" Height="12" Fill="{DynamicResource Muted}" HorizontalAlignment="Left"
+                     Margin="5,0,0,0"/>
           </Grid>
           <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Track" Property="Background" Value="{DynamicResource Selection}"/>
+            </Trigger>
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Track" Property="Background" Value="{DynamicResource Accent}"/>
+              <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Accent}"/>
               <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource OnAccent}"/>
-              <Setter TargetName="Knob" Property="Margin" Value="21,0,0,0"/>
+              <Setter TargetName="Knob" Property="Width" Value="14"/>
+              <Setter TargetName="Knob" Property="Height" Value="14"/>
+              <Setter TargetName="Knob" Property="Margin" Value="22,0,0,0"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
               <Setter Property="Opacity" Value="0.45"/>
