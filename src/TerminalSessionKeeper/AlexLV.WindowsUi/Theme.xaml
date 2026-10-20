@@ -55,7 +55,9 @@
     <Setter Property="Foreground" Value="{DynamicResource Text}"/>
     <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
     <Setter Property="FontSize" Value="10"/>
+    <!-- Mouse-only like the native caption buttons: a click must not leave a focus box behind. -->
     <Setter Property="IsTabStop" Value="False"/>
+    <Setter Property="Focusable" Value="False"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
@@ -95,7 +97,9 @@
     <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
     <Setter Property="FontSize" Value="12.5"/>
     <Setter Property="Cursor" Value="Hand"/>
+    <!-- Mouse-only (Updates is a tab away by keyboard): a click must not leave a focus box behind. -->
     <Setter Property="IsTabStop" Value="False"/>
+    <Setter Property="Focusable" Value="False"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
@@ -460,7 +464,12 @@
         <ControlTemplate TargetType="TabItem">
           <Border x:Name="Bd" Padding="12,10,12,8" BorderThickness="0,0,0,2" BorderBrush="Transparent" Background="Transparent"
                   Margin="0,0,2,-1">
-            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+            <!-- A hidden semibold copy reserves the selected width, so picking a tab never shifts the row. -->
+            <Grid>
+              <TextBlock Text="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}" FontWeight="SemiBold"
+                         Visibility="Hidden"/>
+              <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" HorizontalAlignment="Center"/>
+            </Grid>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
