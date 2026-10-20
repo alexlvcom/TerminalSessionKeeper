@@ -135,6 +135,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         _shutdownListener = new ShutdownListenerWindow(Shutdown);
         _shutdownListener.Show();
+        WhatsNewWindow.Schedule();
 
         _updateTimer.Interval = (int)TimeSpan.FromMinutes(15).TotalMilliseconds;
         _updateTimer.Tick += async (_, _) =>

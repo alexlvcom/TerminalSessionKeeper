@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -31,7 +32,9 @@ public sealed class UpdateService : IDisposable
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        using var response = await _http.GetAsync("https://api.github.com/repos/alexlvcom/TerminalSessionKeeper/releases/latest", timeout.Token);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/alexlvcom/TerminalSessionKeeper/releases/latest");
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true, MaxAge = TimeSpan.Zero };
+        using var response = await _http.SendAsync(request, timeout.Token);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
@@ -67,6 +70,15 @@ public sealed class UpdateService : IDisposable
         if (digest is not null && !IsSha256(digest)) throw new InvalidDataException("Invalid installer checksum.");
         if (digest is null && checksums is null) throw new InvalidDataException("This update has no installer checksum.");
         return new AppUpdate(version, installer, checksums, digest);
+    }
+
+    /// <summary>Refresh an accepted offer so a dialog left open never installs a superseded release.</summary>
+    public async Task<AppUpdate> RefreshAsync(AppUpdate offered, CancellationToken ct = default)
+    {
+        var latest = await CheckAsync(new Version(0, 0, 0), ct);
+        if (latest is null || latest.Version < offered.Version)
+            throw new InvalidDataException("The offered update is no longer available. Check for updates again.");
+        return latest;
     }
 
     public async Task<string> DownloadAsync(AppUpdate update, string cacheRoot, CancellationToken cancellationToken, IProgress<(long Received, long? Total)>? progress = null)

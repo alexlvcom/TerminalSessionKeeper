@@ -47,3 +47,10 @@
 
 - Keep tag-driven GitHub Actions release publishing with `GITHUB_TOKEN`. GitHub showing `github-actions` as release author is expected and accepted by the owner. Do not add a personal token or manual publishing only to change this label. Commit authorship is separate.
 - Order changelog and release notes by user impact. Use Main changes for the major features, followed by Other updates for smaller UI and wording refinements.
+
+## Shared Update And What’s New Standards
+
+- Follow the canonical desktop standards at `~/sites/alexlv.com/docs/windows-apps-common-standards.md` in WSL, discoverable through the `alexlv-apps` (My Apps) skill. Its published copy is `public/docs/windows-apps-common-standards.md` in that project; keep both identical when changing a shared convention.
+- Every Update click and retry must refresh the latest authorized stable release before downloading, skipping superseded offers and using the refreshed URL and matching SHA-256. A failed refresh or withdrawn offer must stop; never fall back to an older installer.
+- Show What’s New once per PC after installation or upgrade, using the running version’s embedded changelog Main changes, with Got it and full history. Acknowledge only after rendering; normal restarts and downgrades stay quiet. Keep acknowledgement separate from synced settings. Locked apps show it after successful unlock.
+- Retain regression coverage for a feed advancing while an offer is open, refresh failure, matching installer/checksum selection, and release acknowledgement. Verify the window’s wrapping, keyboard dismissal, and installed version before delivery.

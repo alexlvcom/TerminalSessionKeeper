@@ -2,6 +2,13 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## 1.4.1 - 2026-10-20
+
+### Main changes
+
+- Recheck the latest available release when Update is clicked, so an older prompt skips superseded installers. Stop if the latest release cannot be verified.
+- Show What’s New with this version’s main changes once after installation or upgrade, remembered on this PC.
+
 ## [1.4.0] - 2026-10-20
 
 ### Main changes

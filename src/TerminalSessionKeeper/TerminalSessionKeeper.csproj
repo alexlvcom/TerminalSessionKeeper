@@ -25,10 +25,10 @@
     <RootNamespace>TerminalSessionKeeper</RootNamespace>
     <AssemblyName>TerminalSessionKeeper</AssemblyName>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <Version>1.4.0</Version>
-    <InformationalVersion>1.4.0</InformationalVersion>
-    <FileVersion>1.4.0.0</FileVersion>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <Version>1.4.1</Version>
+    <InformationalVersion>1.4.1</InformationalVersion>
+    <FileVersion>1.4.1.0</FileVersion>
+    <AssemblyVersion>1.4.1.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
          see AppInfo.cs. -->

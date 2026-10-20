@@ -7,7 +7,7 @@ using TerminalSessionKeeper.Services;
 namespace TerminalSessionKeeper.Ui;
 
 /// <summary>
-/// Offers a newer release: Update downloads, verifies and opens setup; Later dismisses it. A
+/// Offers a newer release: Update checks for the latest version, downloads, verifies and opens setup; Later dismisses it. A
 /// timed-out or failed download keeps the window open so Update can be tried again.
 /// </summary>
 public partial class UpdateWindow : ThemedWindow
@@ -25,7 +25,7 @@ public partial class UpdateWindow : ThemedWindow
         Title = $"Update {AppInfo.DisplayName}";
         TitleVersion = $"v{Changelog.MarketingVersion}";
         Heading.Text = $"Version {update.Version.ToString(3)} is available";
-        Message.Text = $"You have {Changelog.MarketingVersion}. Update downloads and verifies the installer, then opens it. " +
+        Message.Text = $"You have {Changelog.MarketingVersion}. Update checks for the latest version, downloads and verifies the installer, then opens it. " +
                        $"Setup closes {AppInfo.DisplayName} and restarts it after updating.";
         Loaded += (_, _) => UpdateButton.Focus();
         Closing += (_, _) => _cancellation.Cancel();
@@ -61,7 +61,12 @@ public partial class UpdateWindow : ThemedWindow
         try
         {
             var cache = Path.Combine(AppPaths.Root, "Updates");
-            var installer = await _updates.DownloadAsync(_update, cache, attempt.Token, progress);
+            Message.Text = "Checking the latest available version…";
+            var latest = await _updates.RefreshAsync(_update, attempt.Token);
+            if (!IsLoaded) return;
+            Heading.Text = $"Updating to version {latest.Version.ToString(3)}";
+            Message.Text = "Downloading and verifying the latest installer…";
+            var installer = await _updates.DownloadAsync(latest, cache, attempt.Token, progress);
             if (!IsLoaded) return;
             ProgressText.Text = "Verified with SHA-256. Opening setup…";
             _ = Process.Start(new ProcessStartInfo { FileName = installer, UseShellExecute = true })
