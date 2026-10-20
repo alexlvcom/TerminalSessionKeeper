@@ -89,6 +89,7 @@ public sealed class TrayMenuStyler : IDisposable
         public Color Border = Convert(ThemeManager.ColorOf("Border"));
         public Color Text = Convert(ThemeManager.ColorOf("Text"));
         public Color Muted = Convert(ThemeManager.ColorOf("Muted"));
+        public Color Accent = Convert(ThemeManager.ColorOf("Accent"));
         public Color Selection = Blend(Convert(ThemeManager.ColorOf("Accent")), Convert(ThemeManager.ColorOf("Raised")), ThemeManager.IsDark ? 0.22 : 0.14);
 
         private static Color Convert(WpfColor c) => Color.FromArgb(c.A, c.R, c.G, c.B);
@@ -123,6 +124,17 @@ public sealed class TrayMenuStyler : IDisposable
         {
             e.TextColor = e.Item.Enabled ? _c.Text : _c.Muted;
             base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            // An accent checkmark on the menu itself, never the system's bright highlight square.
+            using var font = new Font("Segoe Fluent Icons", 12f, GraphicsUnit.Pixel);
+            using var fallback = new Font("Segoe MDL2 Assets", 12f, GraphicsUnit.Pixel);
+            var useFont = font.Name == "Segoe Fluent Icons" ? font : fallback;
+            var color = e.Item.Enabled ? _c.Accent : _c.Muted;
+            TextRenderer.DrawText(e.Graphics, "", useFont, e.ImageRectangle, color,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
 
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
