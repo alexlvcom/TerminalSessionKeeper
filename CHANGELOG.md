@@ -10,6 +10,7 @@ All notable changes to Terminal Session Keeper are documented here. Format follo
 - Settings fits every tab without scrolling. Diagnostics (the executable, settings, snapshots and logs paths, and Copy details) moved out of About into a tab of its own.
 
 ### Other updates
+- A taskbar pin made from an older copy of the app now opens the installed version instead.
 - Check for updates in Settings → Updates reports its result in the status card: "You're running the latest version (v1.4.0)" with the check time, or why the check failed. No message box opens unless a newer version is available.
 - Settings → Updates opens with what the last check actually found: a newer version with an Update button, the latest-version message, or the failure and its reason.
 - Setup and uninstall now close a running copy cleanly. Before, the hidden window they ask to close never existed, so setup force-closed the app after a delay.
