@@ -19,7 +19,7 @@
     - Info: "There is no saved snapshot to restore yet."
     - Warning Yes/No (default No): "A Windows Terminal window is already open. Restoring will open a second
       window with N more tab(s). The next snapshot would then capture both windows together. Restore anyway?"
-    - Info: "You are running version 1.3.2. No newer installer version is available."
+    - Info: "You're running the latest version (v1.3.2). (Not shown for a check from Settings: the Updates card reports it in place.)"
     - Warning: "Could not check for updates. Please try again later. <reason>"
     - Info: "Diagnostic details copied to clipboard."
     - Error: "Failed to open folder: <reason>" · Info: "Could not open the snapshots folder."
@@ -610,7 +610,7 @@ NODE_OPTIONS=--max-old-space-size=8192</textarea>
         <h2>Status</h2>
         <div class="card status-card" id="update-status" aria-live="polite">
           <div class="badge" id="update-badge"><svg class="icon"><use href="#i-check"/></svg></div>
-          <div><strong id="update-title">Terminal Session Keeper is up to date</strong>
+          <div><strong id="update-title">You're running the latest version (v1.3.2)</strong>
             <span class="muted" id="update-sub">Version 1.3.2 is the latest stable version • Last checked 2026-10-20 10:36</span></div>
         </div>
       </div>
@@ -750,7 +750,7 @@ NODE_OPTIONS=--max-old-space-size=8192</textarea>
 
   <div class="window small" id="msg-up-to-date" hidden role="alertdialog">
     <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
-    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-check"/></svg></div><div><p>You are running version 1.3.2.</p><p>No newer installer version is available.</p></div></div>
+    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-check"/></svg></div><div><p>You're running the latest version (v1.3.2).</p></div></div>
     <div class="footer"><button class="btn primary" data-close>OK</button></div>
   </div>
 
@@ -1018,9 +1018,9 @@ Main changes
     setTimeout(() => {
       btn.disabled = false; btn.textContent = 'Check for updates';
       const sim = $('#sim-update').value, now = '2026-10-20 11:42';
-      if (sim === 'current') { setStatus('ok', 'Terminal Session Keeper is up to date', `Version 1.3.2 is the latest stable version • Last checked ${now}`); openModal('msg-up-to-date'); }
+      if (sim === 'current') { setStatus('ok', "You're running the latest version (v1.3.2)", `Last checked ${now}`); }
       else if (sim === 'available') { setStatus('info', 'Version 1.3.3 is available', `You have 1.3.2 • Last checked ${now}`); openModal('dlg-update'); }
-      else { setStatus('warn', 'Could not check for updates', 'Version 1.3.2 • Check your connection and try again'); openModal('msg-check-failed'); }
+      else { setStatus('warn', 'Could not check for updates', 'Running v1.3.2 • No such host is known'); }
     }, 1100);
   });
 

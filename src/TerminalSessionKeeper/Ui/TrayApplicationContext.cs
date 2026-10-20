@@ -466,7 +466,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         if (_settings.CheckFrequency != UpdateCheckFrequency.Never) _updateTimer.Start();
     }
 
-    /// <summary>Checks GitHub. Manual checks report every outcome; automatic ones only offer an update.</summary>
+    /// <summary>
+    /// Checks GitHub. Manual checks come from Settings → Updates, which shows the returned status in
+    /// place; only a newer release opens a dialog. Automatic checks stay quiet unless they offer an update.
+    /// </summary>
     private async Task<UpdateStatus> CheckForUpdatesAsync(bool manual)
     {
         var current = Changelog.MarketingVersion;
@@ -484,11 +487,7 @@ public sealed class TrayApplicationContext : ApplicationContext
             _settingsStore.Save(_settings);
             var checkedAt = $"Last checked {DateTime.Now:yyyy-MM-dd HH:mm}";
 
-            if (update is null)
-            {
-                if (manual) MessageDialog.Show($"You are running version {current}.\n\nNo newer installer version is available.", MessageKind.Info);
-                return new UpdateStatus(UpdateState.UpToDate, $"{AppInfo.DisplayName} is up to date", $"Version {current} · {checkedAt}");
-            }
+            if (update is null) return UpdateStatus.Latest(current, DateTime.Now);
 
             var available = new UpdateStatus(UpdateState.Available, $"Version {update.Version.ToString(3)} is available",
                 $"You have {current} · {checkedAt}");
@@ -499,13 +498,12 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
         catch (OperationCanceledException)
         {
-            return new UpdateStatus(UpdateState.Failed, "Update check stopped", $"Version {current}");
+            return UpdateStatus.Failed(current, "The check was stopped");
         }
         catch (Exception ex)
         {
             _log.Error("Update check failed.", ex);
-            if (manual) MessageDialog.Show($"Could not check for updates. Please try again later.\n\n{ex.Message}", MessageKind.Warning);
-            return new UpdateStatus(UpdateState.Failed, "Could not check for updates", $"Version {current} · {ex.Message}");
+            return UpdateStatus.Failed(current, ex.Message);
         }
         finally { _checkingUpdate = false; }
     }
