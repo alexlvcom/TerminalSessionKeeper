@@ -2,6 +2,19 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## [1.4.0] - 2026-10-20
+
+### Main changes
+- New modern look: Settings, Snapshots, the update dialog, change history, every message and the tray menu are redrawn with the shared AlexLV Windows design, in light and dark.
+- New Appearance → Theme setting: System (default) follows the Windows light or dark mode and switches with it; Light and Dark fix the look. A choice previews at once; Save keeps it, and Cancel, Esc or closing Settings puts the saved theme back.
+- Settings fits every tab without scrolling. Diagnostics (the executable, settings, snapshots and logs paths, and Copy details) moved out of About into a tab of its own.
+
+### Other updates
+- The snapshot interval and the number of snapshots kept are checked on Save: a value outside 1–1440 minutes or 1–500 snapshots is reported beside the field instead of being changed silently.
+- The footer shows how many changes are not saved yet.
+- The update dialog shows download progress and offers Try again after a timeout or failure.
+- The version shown in the title bar, About and the update check now comes from the build itself, and About shows the real build date, so they can never disagree with the release notes.
+
 ## [1.3.2] - 2026-10-20
 
 ### Main changes

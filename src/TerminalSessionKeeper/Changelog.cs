@@ -1,181 +1,84 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace TerminalSessionKeeper;
 
+/// <summary>A heading group of one release ("Main changes", "Other updates"); untitled when the entry has none.</summary>
+public sealed record ChangelogSection(string? Heading, IReadOnlyList<string> Bullets);
+
+/// <summary>One release from CHANGELOG.md.</summary>
+public sealed class ChangelogEntry(string version, string date, IReadOnlyList<ChangelogSection> sections)
+{
+    public string Version { get; } = version;
+    public string Date { get; } = date;
+    public IReadOnlyList<ChangelogSection> Sections { get; } = sections;
+
+    /// <summary>Every bullet of the release, in order.</summary>
+    public string[] Notes => Sections.SelectMany(s => s.Bullets).ToArray();
+
+    public void Deconstruct(out string version, out string date, out string[] notes)
+    {
+        version = Version;
+        date = Date;
+        notes = Notes;
+    }
+}
+
 /// <summary>
-/// App version info and human-readable change history shown in the tray menu → About.
-/// Add a new entry at the top of <see cref="Entries"/> whenever behaviour changes,
-/// and bump &lt;VersionPrefix&gt; in the .csproj to match.
+/// Version info and release notes. CHANGELOG.md, embedded at build time, is the only history and
+/// the assembly is the only version: the title bar, About, the tray tooltip and the update check
+/// all read from here. Up to 1.3.2 a second, hand-maintained history in this file decided the
+/// version too, and nothing but care kept it in step with the csproj and CHANGELOG.md.
 /// </summary>
 public static class Changelog
 {
-    /// <summary>Newest first. Each entry: version, date, and bullet notes.</summary>
-    public static readonly (string Version, string Date, string[] Notes)[] Entries =
-    {
-        ("1.3.2", "2026-10-20", new[]
-        {
-            "Settings now saves every preference, including the update check frequency, only when you click Save. Cancel, Esc, or closing the window discards all unsaved changes.",
-            "Save reports an error and keeps Settings open with your edits when settings.json cannot be written.",
-            "Settings are written through a temporary file so a failed save never leaves a half-written settings.json.",
-        }),
-        ("1.3.1", "2026-10-19", new[]
-        {
-            "Start the update download timeout when Update is clicked. Report timeouts and allow retrying instead of leaving the download dialog stuck.",
-        }),
-        ("1.3.0", "2026-10-17", new[]
-        {
-            "New: Windows installer (TerminalSessionKeeper-Setup.exe) installing per-user to %LOCALAPPDATA%\\Programs\\Terminal Session Keeper with automatic upgrade shutdown.",
-            "New: in-app update checking against GitHub releases with configurable check frequency (Hourly, Daily, Weekly, Monthly, Never) and SHA-256 verification.",
-            "New: graceful application shutdown via TerminalSessionKeeperListener on WM_CLOSE for seamless setup and uninstall.",
-            "Changed: About dialog displays actual running executable path, data and log directories, current release notes, and a Copy details button.",
-        }),
+    private static readonly Lazy<ChangelogEntry[]> Parsed = new(() => Parse(ReadEmbedded()));
 
-        ("1.2.3", "2026-10-06", new[]
-        {
-            "Snapshots window: the list fits each entry without dragging and shows how many tabs each snapshot has.",
-            "Snapshots window: double-click (or Enter) a snapshot to restore it.",
-        }),
-
-        ("1.2.2", "2026-09-24", new[]
-        {
-            "Made Settings taller so tab content and controls fit without being clipped.",
-            "Capture PowerShell tab directories from the prompt so restored tabs reopen in the right folder and match their titles.",
-            "Preserve tab order when reliable matches align, so identical stale shell directories do not steal each other's titles.",
-            "Pass a restore marker to PowerShell tabs so startup hooks can preserve each saved starting directory.",
-            "Keep terminal prompt colours when the tray app inherited a non-colour automation environment.",
-            "Find Windows agents through shell wrappers and use a running Codex process's exact resume ID.",
-        }),
-
-        ("1.2.1", "2026-09-23", new[]
-        {
-            "Fixed Settings not being saved. Closing the dialog cleared its internal reference",
-            "     before the saved values were applied, so the app threw an error and reopened",
-            "     with defaults. Environment variables and the WSL cd setting now persist.",
-        }),
-
-        ("1.2.0", "2026-09-23", new[]
-        {
-            "New Settings tab, Environment: custom environment variables for restored WSL tabs,",
-            "     one NAME=value per line. They are added only to the tabs a restore opens, passed",
-            "     into WSL through WSLENV; tabs you open yourself are not affected.",
-            "New setting, 'Type a cd into each restored WSL tab', on by default. It puts a tab",
-            "     back in its saved folder in case the shell changed directory while starting",
-            "     up; turn it off if yours does not, and no extra line is typed into the tabs.",
-        }),
-
-        ("1.1.1", "2026-09-23", new[]
-        {
-            "A tab colour no longer moves to the neighbouring tab when the terminal is on a",
-            "     monitor scaled differently from the one at sign-in. The app was not per-monitor",
-            "     DPI aware, so Windows handed it tab positions scaled to the sign-in monitor while",
-            "     the rendered window stayed in real pixels: every tab was sampled a little left",
-            "     of where it is, a red tab's colour was recorded on the tab to its right, and",
-            "     others read as black. The app is now per-monitor aware, and a window whose tab",
-            "     positions still cannot be trusted to match its pixels is not sampled at all.",
-        }),
-
-        ("1.1.0", "2026-09-17", new[]
-        {
-            "A restored tab colour can be cleared again. Windows Terminal keeps two colours per",
-            "     tab — the one the command line sets and the one the right-click picker sets on",
-            "     top of it — and the picker's Reset clears only the second, so a colour restored",
-            "     with --tabColor came straight back every time it was cleared. Colours are now",
-            "     applied the way the picker applies them, through the setTabColor action, which",
-            "     means lending Windows Terminal that action on an F13-and-up key for the second",
-            "     or two it takes to press it. The entries are removed by id afterwards, and by",
-            "     the next start if the app is killed mid-restore.",
-            "Tabs no longer pick up colours they never had. The sampler was reading its own",
-            "     output: a restored colour is sampled again on the next snapshot, and un-blending",
-            "     multiplies a rounding error by more than three, so colours drifted until they",
-            "     saturated — #DD153D became #FF0051, another tab sank to black, and a plain tab",
-            "     acquired a grey. A colour now has to be read the same way twice before it is",
-            "     recorded, a reading close to the colour on file leaves it alone, and a colour",
-            "     read as cleared twice is forgotten — so clearing one in the terminal sticks.",
-            "A frame the two background readings disagree about is no longer read at all. One",
-            "     bad frame that reported the tab strip as black had invented a colour for every",
-            "     uncoloured tab in the window at once.",
-            "A tab scrolled out of an overflowing tab strip is skipped rather than sampled from",
-            "     the sliver of it still on screen.",
-            "New setting, 'Put tab colours back when tabs are rebuilt', on by default. Turn it",
-            "     off to leave restored tabs uncoloured and Windows Terminal's settings untouched.",
-            "A restore builds a window of its own again. Every restore aimed at one fixed window",
-            "     name, and wt.exe adds a tab to a window that already has that name rather than",
-            "     making one — so the second restore appended its tabs to the window the first had",
-            "     built, however many days earlier. The configured name is now the prefix and the",
-            "     time the restore ran completes it.",
-        }),
-
-        ("1.0.0", "2026-09-16", new[]
-        {
-            "Initial release. Saves the open Windows Terminal tabs — including the live",
-            "     claude and codex conversations inside them — and rebuilds the window after",
-            "     a restart, each tab back in its own directory.",
-            "Tabs are identified by WT_SESSION, the id Windows Terminal puts in every pane's",
-            "     environment. Process start times are never used: WSL's clock drifts from the",
-            "     host's across hibernate, by many hours and not by a constant offset.",
-            "Session ids come from the running processes themselves — claude's open session",
-            "     handle inside WSL, the codex SQLite state — so two tabs in one folder still",
-            "     get their own conversation.",
-            "Titles are matched to tabs by content, not by position: the agent's own session",
-            "     title, then the git branch (which is how a tab renamed 'ABC-1022' finds its",
-            "     way back to the checkout on ABC-1022-JWT-Alongside-Session-Auth), then the",
-            "     folder name. One tab and one title left over are paired; more than one are",
-            "     reported rather than guessed at.",
-            "Restored tabs come back with the resume command waiting at the prompt, typed",
-            "     into the console input queue. Nothing runs until Enter — a dozen agents and",
-            "     their MCP servers all booting at once, right after a reboot, is not what you",
-            "     want. Turn on 'Run resume commands automatically' if you disagree.",
-            "No shell-side hook to install: the WSL side is driven the same way as the Windows",
-            "     side, by attaching to the tab's console and typing into it.",
-            "Agents: claude, codex, junie and agy (Antigravity), on both the Windows and the",
-            "     WSL side of a tab.",
-            "Tab colours are kept. No Windows Terminal API exposes them, so the window is asked",
-            "     to render itself and the colour is read from the tab's own pixels — which works",
-            "     while the terminal is behind other windows, as it usually is when the snapshot",
-            "     timer fires. A minimized window cannot be read, and those colours carry forward",
-            "     from the previous snapshot instead. Anything uncertain is left uncoloured rather",
-            "     than guessed at, and overrides.json always wins.",
-            "The tray menu holds two actions and two windows; everything set once lives in",
-            "     Settings, and everything about a saved snapshot lives in the Snapshots window,",
-            "     where it can be read before it is acted on.",
-            "Automatic restore waits for the first run after a reboot and for there to be no",
-            "     terminal window already open — restoring alongside a live window would put",
-            "     both into the next snapshot and double the tab count after that.",
-        }),
-    };
+    /// <summary>Newest first.</summary>
+    public static ChangelogEntry[] Entries => Parsed.Value;
 
     public const string Author = "Alex LV";
     public const string AuthorEmail = "alex@alexlv.com";
     public const string Copyright = "Copyright © 2026 Alex LV";
 
-    /// <summary>Author line shown in the About window header.</summary>
-    public static string AuthorLine => $"{Author}  ·  {AuthorEmail}";
-
-    /// <summary>Marketing version, e.g. "1.0.0" (from the newest changelog entry).</summary>
-    public static string MarketingVersion => Entries[0].Version;
-
-    /// <summary>Date of the newest changelog entry.</summary>
-    public static string MarketingDate => Entries[0].Date;
-
-    public static string GetReleaseNotes(string version)
-    {
-        var entry = Entries.FirstOrDefault(e => e.Version == version);
-        if (entry.Notes is { Length: > 0 })
-        {
-            return string.Join(Environment.NewLine, entry.Notes);
-        }
-        return "No release notes available for this version.";
-    }
-
-    /// <summary>Full build version including the auto-incrementing build/revision.</summary>
-    public static string BuildVersion
+    /// <summary>The running release, e.g. "1.4.0", from the assembly's informational version.</summary>
+    public static string MarketingVersion
     {
         get
         {
-            var version = Assembly.GetExecutingAssembly().GetName().Version;
-            return version?.ToString() ?? MarketingVersion;
+            var informational = typeof(Changelog).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            return string.IsNullOrWhiteSpace(informational) ? Entries[0].Version : informational.Split('+')[0];
         }
     }
+
+    /// <summary>The release whose notes About shows: the running version, not merely the newest heading.</summary>
+    public static ChangelogEntry? Current => Find(MarketingVersion);
+
+    public static ChangelogEntry? Find(string version) => Entries.FirstOrDefault(e => e.Version == version);
+
+    public static string GetReleaseNotes(string version)
+    {
+        var entry = Find(version);
+        if (entry is null) return "No release notes available for this version.";
+
+        var lines = new List<string>();
+        foreach (var section in entry.Sections)
+        {
+            if (section.Heading is not null)
+            {
+                if (lines.Count > 0) lines.Add("");
+                lines.Add(section.Heading);
+            }
+
+            lines.AddRange(section.Bullets.Select(b => "• " + b));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>Full build version (four parts).</summary>
+    public static string BuildVersion => typeof(Changelog).Assembly.GetName().Version?.ToString() ?? MarketingVersion;
 
     /// <summary>Timestamp this executable was built.</summary>
     public static DateTime BuildDate
@@ -205,9 +108,6 @@ public static class Changelog
         "conversations running inside them — and rebuilds the window after a restart,",
         "with each tab back in its own directory and its resume command waiting at the",
         "prompt.",
-        "",
-        "Windows Update does not care that you had twelve tabs open, each in a different",
-        "project with a different agent session. This does.",
     };
 
     /// <summary>What the app touches, surfaced for transparency.</summary>
@@ -220,10 +120,7 @@ public static class Changelog
         "         Nothing machine-wide. No elevation. No scheduled task. Nothing in your dotfiles.",
     };
 
-    /// <summary>
-    /// Everything except the version header. Used for the About window body, which already shows
-    /// the version and build stamp in its header.
-    /// </summary>
+    /// <summary>Everything except the version header: description, system notes and every release.</summary>
     public static string FormatBody()
     {
         var lines = new List<string>();
@@ -234,20 +131,21 @@ public static class Changelog
         lines.Add("What's changed");
         lines.Add("──────────────");
 
-        foreach (var (version, date, notes) in Entries)
+        foreach (var entry in Entries)
         {
             lines.Add("");
-            lines.Add($"v{version}  ({date})");
-            foreach (var note in notes) lines.Add("  • " + note);
+            lines.Add($"v{entry.Version}  ({entry.Date})");
+            foreach (var section in entry.Sections)
+            {
+                if (section.Heading is not null) lines.Add("  " + section.Heading);
+                foreach (var bullet in section.Bullets) lines.Add("  • " + bullet);
+            }
         }
 
         return string.Join(Environment.NewLine, lines);
     }
 
-    /// <summary>
-    /// The version header plus <see cref="FormatBody"/> — the form used for the clipboard, so a
-    /// pasted copy identifies the exact build it came from.
-    /// </summary>
+    /// <summary>The version header plus <see cref="FormatBody"/>, so a pasted copy names its exact build.</summary>
     public static string FormatFull()
     {
         var header = new[]
@@ -261,5 +159,69 @@ public static class Changelog
         };
 
         return string.Join(Environment.NewLine, header) + FormatBody();
+    }
+
+    private static readonly Regex VersionHeading = new(@"^##\s+\[?(?<v>\d+\.\d+\.\d+)\]?\s*[-—–]\s*(?<d>\d{4}-\d{2}-\d{2})", RegexOptions.Compiled);
+
+    /// <summary>Parses Keep a Changelog headings (<c>## [1.4.0] - 2026-10-20</c>), <c>###</c> sections and <c>-</c> bullets.</summary>
+    public static ChangelogEntry[] Parse(string markdown)
+    {
+        var entries = new List<ChangelogEntry>();
+        string? version = null, date = null, heading = null;
+        var sections = new List<ChangelogSection>();
+        var bullets = new List<string>();
+
+        void FlushSection()
+        {
+            if (bullets.Count > 0) sections.Add(new ChangelogSection(heading, bullets.ToArray()));
+            bullets.Clear();
+        }
+
+        void FlushEntry()
+        {
+            FlushSection();
+            if (version is not null) entries.Add(new ChangelogEntry(version, date!, sections.ToArray()));
+            sections.Clear();
+            heading = null;
+        }
+
+        foreach (var raw in markdown.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            var match = VersionHeading.Match(line);
+            if (match.Success)
+            {
+                FlushEntry();
+                version = match.Groups["v"].Value;
+                date = match.Groups["d"].Value;
+                continue;
+            }
+
+            if (version is null) continue;
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                FlushSection();
+                heading = line[4..].Trim();
+            }
+            else if (line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                bullets.Add(line[2..].Trim().Replace("`", ""));
+            }
+            else if (line.StartsWith("  ", StringComparison.Ordinal) && bullets.Count > 0 && line.Trim().Length > 0)
+            {
+                bullets[^1] += " " + line.Trim();
+            }
+        }
+
+        FlushEntry();
+        return entries.ToArray();
+    }
+
+    private static string ReadEmbedded()
+    {
+        using var stream = typeof(Changelog).Assembly.GetManifestResourceStream("CHANGELOG.md")
+            ?? throw new InvalidOperationException("CHANGELOG.md is not embedded.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }

@@ -18,19 +18,30 @@
 - Setup and uninstall close the app through `WM_CLOSE` on `TerminalSessionKeeperListener`, then wait for the `TerminalSessionKeeper.Singleton` mutex to be released. Setup uses `PrepareToInstall` and restarts a previously running app after upgrade. Do not add an `AppMutex` directive that prompts before automatic shutdown.
 - Preserve existing startup shortcuts by selecting the installer's `startup` task ("Start with Windows") when one already exists. Shortcuts must target the installed EXE.
 - Keep user settings, logs, and snapshots in `%LOCALAPPDATA%\TerminalSessionKeeper`; upgrades and uninstall must preserve them.
-- About must show the actual running EXE path from `Application.ExecutablePath`, not a hard-coded installation path.
+- About (Diagnostics tab) must show the actual running EXE path from `Environment.ProcessPath`, not a hard-coded installation path.
 
 ## GitHub updates
 
 - Default to checking immediately on startup and daily while running. Settings must support hourly, daily, weekly, calendar-monthly, and never. Never disables startup and scheduled checks while leaving manual checks available. Keep checks asynchronous and prevent overlapping checks or downloads.
 - Offer Update/Later for a newer stable release with `TerminalSessionKeeper-Setup.exe`. Download only after Update is clicked. Verify the GitHub SHA-256 digest or published `SHA256SUMS.txt` before launching setup.
-- Keep background failures quiet. Manual Check for updates lives in Settings and the About window, reporting results to the user.
+- Keep background failures quiet. Manual Check for updates lives on the Settings Updates tab, reporting results to the user.
 - Run tests with `dotnet test tests/TerminalSessionKeeper.Tests/TerminalSessionKeeper.Tests.csproj -c Release`.
+
+## UI and themes
+
+- Every window and dialog is WPF styled by the shared AlexLV Windows UI kit, vendored byte-identically in `src/TerminalSessionKeeper/AlexLV.WindowsUi/`. The canonical copy is `C:\projects\AlexLV.WindowsUi` (see its README); change it there and copy it to every app. The tray icon, its menu and the message loop stay WinForms; `TrayMenuStyler` themes the menu and `WinFormsHosting.ShowModeless` opens modeless windows. Tray Keeper is the reference implementation.
+- Every window derives from `ThemedWindow` (XAML root `ui:ThemedWindow`) so it never flashes light before its first themed frame. Use `MessageDialog`, never `MessageBox`.
+- Keep `<InvariantGlobalization>false</InvariantGlobalization>`: WPF text layout creates real cultures, and invariant mode crashes the first `TextBox` it measures. A test guards it.
+- The approved design is `design/ui-redesign.html`; update it before a visible redesign.
+- Appearance → Theme offers System (default), Light and Dark, separate from the tab-colour options. System follows the Windows app mode live. A new theme previews at once; any close without Save restores the saved theme.
+- Settings tabs (Snapshots, Restoring, Environment, Appearance, General, Updates, About, Diagnostics) must fit the fixed 780×700 window (eight tab headers need one row) without vertical scrolling; move overflowing content to another tab. `WindowTests` checks every tab in both themes.
+- Accent: `#1D7347` light, `#78E0A0` dark (the icon's prompt green). Surfaces stay neutral.
+- Version and release notes come only from `CHANGELOG.md` (embedded, parsed by `Changelog.cs`) and the csproj `<Version>`.
 
 ## About window layout
 
-- Show the app icon before the app name. Keep the EXE path, settings path, snapshots path, and logs path selectable for copying, but focus Close initially so diagnostic paths and release notes are not preselected.
-- Include a "Copy details" button to copy diagnostic paths and release notes to the clipboard without requiring manual selection.
+- Show the app icon before the app name. Paths live on the Diagnostics tab, selectable for copying; focus the footer Save button initially so diagnostic paths and release notes are not preselected.
+- Include a "Copy details" button (Diagnostics tab) to copy diagnostic paths and release notes to the clipboard without requiring manual selection.
 
 ## Automated release identity
 

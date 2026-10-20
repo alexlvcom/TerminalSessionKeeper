@@ -1,4 +1,6 @@
 using System.Drawing;
+using System.Windows.Forms;
+using AlexLV.WindowsUi;
 using TerminalSessionKeeper.Logging;
 using TerminalSessionKeeper.Model;
 using TerminalSessionKeeper.Restore;
@@ -14,10 +16,14 @@ namespace TerminalSessionKeeper.Ui;
 ///
 /// The menu holds only what is worth reaching for in a hurry — two actions and two windows.
 /// Everything that is set once lives in Settings, and everything about a particular saved
-/// snapshot lives in the Snapshots window, where it can be seen before it is acted on.
+/// snapshot lives in the Snapshots window, where it can be seen before it is acted on. The tray
+/// stays WinForms (NotifyIcon and its message loop); every window is WPF with the shared kit.
 /// </summary>
 public sealed class TrayApplicationContext : ApplicationContext
 {
+    /// <summary>Terminal Session Keeper's accent, the green of the prompt in its icon.</summary>
+    public static readonly AccentColors Accent = AccentColors.FromHex("#1D7347", "#78E0A0", onDark: "#0B1F14");
+
     private readonly SnapshotService _snapshots;
     private readonly SnapshotStore _store;
     private readonly RestoreService _restore;
@@ -27,14 +33,15 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly Icon _icon;
 
     private readonly NotifyIcon _notifyIcon;
+    private readonly TrayMenuStyler _menuStyler;
     private readonly System.Windows.Forms.Timer _snapshotTimer;
 
     /// <summary>Owns the UI thread's handle, so background work can marshal back onto it.</summary>
     private readonly Control _sync;
 
     private AppSettings _settings;
-    private SnapshotsForm? _snapshotsForm;
-    private SettingsForm? _settingsForm;
+    private SnapshotsWindow? _snapshotsWindow;
+    private SettingsWindow? _settingsWindow;
     private readonly ShutdownListenerWindow _shutdownListener;
     private readonly UpdateService _updates = new();
     private readonly CancellationTokenSource _updateCancellation = new();
@@ -63,20 +70,38 @@ public sealed class TrayApplicationContext : ApplicationContext
         _settings = settingsStore.Load();
         _icon = AppIcon.Load();
 
+        ThemeManager.Initialize(AppInfo.DisplayName, Accent, _settings.Theme);
+        ThemeManager.WindowIcon = WinFormsHosting.ToImageSource(_icon);
+
         _sync = new Control();
         _sync.CreateControl();
+
+        var snapshotItem = new ToolStripMenuItem("&Snapshot now", null, (_, _) => RunSnapshot(manual: true));
+        var restoreItem = new ToolStripMenuItem("&Restore last snapshot", null, (_, _) => RestoreLatest());
+        var snapshotsItem = new ToolStripMenuItem("S&napshots…", null, (_, _) => ShowSnapshots());
+        var settingsItem = new ToolStripMenuItem("Se&ttings…", null, (_, _) => ShowSettings());
+        var exitItem = new ToolStripMenuItem("E&xit", null, (_, _) => ExitApplication());
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
-            new ToolStripMenuItem("&Snapshot now", null, (_, _) => RunSnapshot(manual: true)),
-            new ToolStripMenuItem("&Restore last snapshot", null, (_, _) => RestoreLatest()),
+            snapshotItem,
+            restoreItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("S&napshots…", null, (_, _) => ShowSnapshots()),
-            new ToolStripMenuItem("Se&ttings…", null, (_, _) => ShowSettings()),
+            snapshotsItem,
+            settingsItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("E&xit", null, (_, _) => ExitApplication()),
+            exitItem,
         });
+
+        _menuStyler = new TrayMenuStyler(menu);
+        _menuStyler.SetGlyph(snapshotItem, "");
+        _menuStyler.SetGlyph(restoreItem, "");
+        _menuStyler.SetGlyph(snapshotsItem, "");
+        _menuStyler.SetGlyph(settingsItem, "");
+        _menuStyler.SetGlyph(exitItem, "");
+        // Double-clicking the icon opens this window, so it is drawn as the default.
+        snapshotsItem.Font = new Font(menu.Font, System.Drawing.FontStyle.Bold);
 
         _notifyIcon = new NotifyIcon
         {
@@ -152,7 +177,7 @@ public sealed class TrayApplicationContext : ApplicationContext
                     Notify(outcome.Summary, ToolTipIcon.Error);
                 }
 
-                if (_snapshotsForm is { IsDisposed: false, Visible: true }) _snapshotsForm.Reload();
+                if (_snapshotsWindow is { IsVisible: true }) _snapshotsWindow.Reload();
             });
         });
     }
@@ -184,7 +209,7 @@ public sealed class TrayApplicationContext : ApplicationContext
                 "snapshot would then capture both windows together." + Environment.NewLine + Environment.NewLine +
                 "Restore anyway?");
 
-            if (answer != DialogResult.Yes) return;
+            if (answer != MessageResult.Yes) return;
         }
 
         _log.Info($"Restoring {snapshot.TabCount} tab(s) from {label}.");
@@ -242,42 +267,36 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void ShowSnapshots()
     {
-        if (_snapshotsForm is { IsDisposed: false })
+        if (_snapshotsWindow is not null)
         {
-            _snapshotsForm.Reload();
-            _snapshotsForm.Show();
-            _snapshotsForm.WindowState = FormWindowState.Normal;
-            _snapshotsForm.Activate();
+            _snapshotsWindow.Reload();
+            WinFormsHosting.ShowModeless(_snapshotsWindow);
             return;
         }
 
-        _snapshotsForm = new SnapshotsForm(_store, PreviewText, StartRestore, _icon);
-        _snapshotsForm.FormClosed += (_, _) => _snapshotsForm = null;
-        _snapshotsForm.Show();
-        _snapshotsForm.Activate();
+        _snapshotsWindow = new SnapshotsWindow(_store, PreviewText, StartRestore);
+        _snapshotsWindow.Closed += (_, _) => _snapshotsWindow = null;
+        WinFormsHosting.ShowModeless(_snapshotsWindow);
     }
 
-    private void ShowSettings(bool selectAboutTab = false)
+    private void ShowSettings(string? initialTab = null)
     {
-        if (_settingsForm is { IsDisposed: false })
+        if (_settingsWindow is not null)
         {
-            if (selectAboutTab) _settingsForm.SelectAboutTab();
-            _settingsForm.Activate();
+            if (initialTab != null) _settingsWindow.SelectTab(initialTab);
+            _settingsWindow.Activate();
             return;
         }
 
-        // A copy, so Cancel really cancels.
-        var draft = _settingsStore.Load();
-
-        // Save hands the draft to ApplySettings and closes the window only when it was written,
-        // so a failed save keeps the user's edits on screen.
-        var settingsForm = new SettingsForm(draft, _startupManager, _icon, ApplySettings,
+        // A copy, so Cancel really cancels. Save hands the draft to ApplySettings and closes the
+        // window only when it was written, so a failed save keeps the user's edits on screen.
+        var settingsWindow = new SettingsWindow(_settings.Clone(), _startupManager, ApplySettings,
             () => CheckForUpdatesAsync(manual: true));
-        if (selectAboutTab) settingsForm.SelectAboutTab();
-        _settingsForm = settingsForm;
-        settingsForm.FormClosed += (_, _) =>
+        if (initialTab != null) settingsWindow.SelectTab(initialTab);
+        _settingsWindow = settingsWindow;
+        settingsWindow.Closed += (_, _) =>
         {
-            if (ReferenceEquals(_settingsForm, settingsForm)) _settingsForm = null;
+            if (ReferenceEquals(_settingsWindow, settingsWindow)) _settingsWindow = null;
         };
 
         // Modal: the settings decide what the timer and a restore do, so nothing else should be
@@ -286,7 +305,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
-            settingsForm.ShowDialog();
+            settingsWindow.ShowDialog();
         }
         finally
         {
@@ -310,6 +329,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _snapshotTimer.Enabled = _settings.AutoSnapshotEnabled;
 
         _notifyIcon.Text = TooltipText();
+        ThemeManager.Apply(_settings.Theme);
 
         _log.Info(_settings.AutoSnapshotEnabled
             ? $"Automatic snapshots are on, every {DescribeInterval()}."
@@ -393,7 +413,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
-            MessageBox.Show(message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageDialog.Show(message, MessageKind.Info);
         }
         finally
         {
@@ -401,14 +421,13 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private DialogResult Ask(string message)
+    private MessageResult Ask(string message)
     {
         _busy = true;
 
         try
         {
-            return MessageBox.Show(message, AppInfo.DisplayName,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            return MessageDialog.Show(message, MessageKind.Warning, MessageButtons.YesNo, defaultIsNegative: true);
         }
         finally
         {
@@ -447,93 +466,62 @@ public sealed class TrayApplicationContext : ApplicationContext
         if (_settings.CheckFrequency != UpdateCheckFrequency.Never) _updateTimer.Start();
     }
 
-    private async Task CheckForUpdatesAsync(bool manual)
+    /// <summary>Checks GitHub. Manual checks report every outcome; automatic ones only offer an update.</summary>
+    private async Task<UpdateStatus> CheckForUpdatesAsync(bool manual)
     {
-        if (_checkingUpdate || (!manual && _settings.CheckFrequency == UpdateCheckFrequency.Never)) return;
+        var current = Changelog.MarketingVersion;
+        if (_checkingUpdate) return new UpdateStatus(UpdateState.Checking, "Checking for updates…", "A check is already running");
+        if (!manual && _settings.CheckFrequency == UpdateCheckFrequency.Never)
+        {
+            return new UpdateStatus(UpdateState.NotChecked, "Automatic checks are off", $"Version {current}");
+        }
+
         _checkingUpdate = true;
         try
         {
-            var update = await _updates.CheckAsync(Version.Parse(Changelog.MarketingVersion), _updateCancellation.Token);
+            var update = await _updates.CheckAsync(Version.Parse(current), _updateCancellation.Token);
             _settings.LastUpdateCheckUtc = DateTime.UtcNow;
             _settingsStore.Save(_settings);
+            var checkedAt = $"Last checked {DateTime.Now:yyyy-MM-dd HH:mm}";
 
             if (update is null)
             {
-                if (manual) MessageBox.Show($"You are running version {Changelog.MarketingVersion}.\n\nNo newer installer version is available.", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                if (manual) MessageDialog.Show($"You are running version {current}.\n\nNo newer installer version is available.", MessageKind.Info);
+                return new UpdateStatus(UpdateState.UpToDate, $"{AppInfo.DisplayName} is up to date", $"Version {current} · {checkedAt}");
             }
-            if (!manual && _lastOfferedUpdate == update.Version) return;
+
+            var available = new UpdateStatus(UpdateState.Available, $"Version {update.Version.ToString(3)} is available",
+                $"You have {current} · {checkedAt}");
+            if (!manual && _lastOfferedUpdate == update.Version) return available;
             _lastOfferedUpdate = update.Version;
             ShowUpdateDialog(update);
+            return available;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            return new UpdateStatus(UpdateState.Failed, "Update check stopped", $"Version {current}");
+        }
         catch (Exception ex)
         {
             _log.Error("Update check failed.", ex);
-            if (manual) MessageBox.Show($"Could not check for updates. Please try again later.\n\n{ex.Message}", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (manual) MessageDialog.Show($"Could not check for updates. Please try again later.\n\n{ex.Message}", MessageKind.Warning);
+            return new UpdateStatus(UpdateState.Failed, "Could not check for updates", $"Version {current} · {ex.Message}");
         }
         finally { _checkingUpdate = false; }
     }
 
     private void ShowUpdateDialog(AppUpdate update)
     {
-        using var dialog = new Form
+        var wasBusy = _busy;
+        _busy = true;
+        try
         {
-            Text = $"Update {AppInfo.DisplayName} (v{Changelog.MarketingVersion})",
-            StartPosition = FormStartPosition.CenterScreen,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false,
-            ShowInTaskbar = true,
-            ClientSize = new Size(470, 200),
-            Icon = _icon,
-        };
-        var message = new Label
+            new UpdateWindow(update, _updates, _updateCancellation.Token).ShowDialog();
+        }
+        finally
         {
-            Text = $"Version {update.Version} is available. You have {Changelog.MarketingVersion}.\n\nUpdate will download and open the installer. Setup will close the app and restart it after updating.",
-            Location = new Point(18, 18),
-            Size = new Size(434, 115),
-        };
-        var install = new Button { Text = "Update", Location = new Point(268, 152), Size = new Size(88, 30) };
-        var later = new Button { Text = "Later", Location = new Point(364, 152), Size = new Size(88, 30), DialogResult = DialogResult.Cancel };
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_updateCancellation.Token);
-        dialog.FormClosing += (_, _) => cancellation.Cancel();
-        install.Click += async (_, _) =>
-        {
-            install.Enabled = false;
-            message.Text = "Downloading and verifying the installer…";
-            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
-            attempt.CancelAfter(TimeSpan.FromMinutes(10));
-            try
-            {
-                var cache = Path.Combine(AppPaths.Root, "Updates");
-                var installer = await _updates.DownloadAsync(update, cache, attempt.Token);
-                if (dialog.IsDisposed) return;
-                _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = installer,
-                    UseShellExecute = true,
-                }) ?? throw new InvalidOperationException("Windows could not open the installer.");
-                dialog.Close();
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-            catch (OperationCanceledException)
-            {
-                if (dialog.IsDisposed) return;
-                message.Text = "The download timed out. Check your connection and click Update to try again.";
-                install.Enabled = true;
-            }
-            catch (Exception ex)
-            {
-                if (dialog.IsDisposed) return;
-                message.Text = $"Update failed. Please try again.\n\n{ex.Message}";
-                install.Enabled = true;
-            }
-        };
-        dialog.Controls.AddRange(new Control[] { message, install, later });
-        dialog.AcceptButton = install;
-        dialog.CancelButton = later;
-        dialog.ShowDialog();
+            _busy = wasBusy;
+        }
     }
 
     private void ExitApplication()
@@ -541,11 +529,18 @@ public sealed class TrayApplicationContext : ApplicationContext
         _log.Info("Exiting.");
         _snapshotTimer.Stop();
         _notifyIcon.Visible = false;
+        _settingsWindow?.Close();
+        _snapshotsWindow?.Close();
         ExitThread();
     }
 
+    private bool _disposed;
+
     protected override void Dispose(bool disposing)
     {
+        // A crash path can dispose twice (ExitThread, then Program.Main); cancelling a disposed source throws.
+        if (_disposed) return;
+        _disposed = true;
         if (disposing)
         {
             _updateTimer.Stop();
@@ -557,10 +552,9 @@ public sealed class TrayApplicationContext : ApplicationContext
             _snapshotTimer.Stop();
             _snapshotTimer.Dispose();
             _notifyIcon.Visible = false;
+            _menuStyler.Dispose();
             _notifyIcon.ContextMenuStrip?.Dispose();
             _notifyIcon.Dispose();
-            _snapshotsForm?.Dispose();
-            _settingsForm?.Dispose();
             _sync.Dispose();
             _icon.Dispose();
         }

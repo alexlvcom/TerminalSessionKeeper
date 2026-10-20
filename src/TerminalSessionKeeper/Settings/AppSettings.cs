@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AlexLV.WindowsUi;
 using TerminalSessionKeeper.Logging;
 using TerminalSessionKeeper.Services;
 
@@ -77,6 +78,9 @@ public sealed class AppSettings
     /// </summary>
     public bool TypeCdIntoWslTabs { get; set; } = true;
 
+    /// <summary>Appearance → Theme of the app's own windows. System follows the Windows app mode.</summary>
+    public AppTheme Theme { get; set; } = AppTheme.System;
+
     /// <summary>How often Terminal Session Keeper checks GitHub for releases.</summary>
     public UpdateCheckFrequency CheckFrequency { get; set; } = UpdateCheckFrequency.Daily;
 
@@ -100,6 +104,10 @@ public sealed class AppSettings
         AutoSnapshotIntervalMinutes, MinSnapshotIntervalMinutes, MaxSnapshotIntervalMinutes));
 
     public int EffectiveKeepSnapshots => Math.Clamp(KeepSnapshots, 1, 500);
+
+    /// <summary>A deep copy, so Settings can edit a draft and still tell what changed.</summary>
+    public AppSettings Clone() =>
+        JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(this)) ?? new AppSettings();
 
     /// <summary>
     /// The <c>NAME=value</c> lines of <see cref="RestoreWslEnvironment"/>. Blank lines and
@@ -156,7 +164,10 @@ public sealed class SettingsStore
             if (!File.Exists(_path)) return new AppSettings();
 
             var json = File.ReadAllText(_path);
-            return JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
+            // settings.json is hand-editable; an unknown theme falls back to System.
+            settings.Theme = ThemeManager.Normalize(settings.Theme);
+            return settings;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

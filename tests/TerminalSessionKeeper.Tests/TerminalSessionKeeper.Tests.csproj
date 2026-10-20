@@ -19,6 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
     <Using Include="Xunit" />
     <Using Include="System.IO" />
   </ItemGroup>

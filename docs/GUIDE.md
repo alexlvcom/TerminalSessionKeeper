@@ -91,6 +91,13 @@ Four things and an exit. Everything else lives in one of the two windows.
 | **Show a notification** | After a snapshot or a restore |
 | **Start with Windows** | `HKCU\...\CurrentVersion\Run`. No elevation, no scheduled task |
 | **Check for updates** | Hourly, daily (default), weekly, monthly, or never, on the Updates tab |
+| **Theme** (Appearance) | System (default) follows the Windows light or dark mode; Light and Dark fix the look |
+
+The tabs are Snapshots, Restoring, Environment, Appearance, General, Updates, About and
+Diagnostics; each fits the window without scrolling. Diagnostics lists the executable,
+settings, snapshots and logs paths with **Open** buttons, and **Copy details**. A new
+theme previews as soon as you pick it; **Save** keeps it and **Cancel** puts the saved
+one back.
 
 Every tab shares one **Save** / **Cancel** footer. Changes, including the update
 check frequency, take effect only when you click **Save**, and apply at once

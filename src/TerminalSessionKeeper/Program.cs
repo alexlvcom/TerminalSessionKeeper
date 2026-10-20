@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 using TerminalSessionKeeper.Logging;
 using TerminalSessionKeeper.Native;
 using TerminalSessionKeeper.Restore;

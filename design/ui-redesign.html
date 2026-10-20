@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal Session Keeper redesign</title>
+<!--
+  UI INVENTORY (from src/TerminalSessionKeeper/Ui/*.cs, v1.3.2) — every surface below is replicated.
+
+  Tray (TrayApplicationContext.cs)
+    - Notification-area icon; tooltip "Terminal Session Keeper v1.3.2 — every 10 minutes"
+    - Double-click icon / click a balloon -> Snapshots window
+    - Context menu: Snapshot now · Restore last snapshot · ─ · Snapshots… · Settings… · ─ · Exit
+  Balloon notifications (Notify, only when "Show a notification…" is on)
+    - Info: "Saved 7 tabs, 3 resumable."  · "Restored 7 of 7 tab(s) into a new window, 'tskrestore'."
+    - Warning: "No Windows Terminal tabs are open."
+    - Error: "Snapshot failed. See the log for details." · "Something went wrong. See the log for details."
+  Message boxes
+    - Info: "There is no saved snapshot to restore yet."
+    - Warning Yes/No (default No): "A Windows Terminal window is already open. Restoring will open a second
+      window with N more tab(s). The next snapshot would then capture both windows together. Restore anyway?"
+    - Info: "You are running version 1.3.2. No newer installer version is available."
+    - Warning: "Could not check for updates. Please try again later. <reason>"
+    - Info: "Diagnostic details copied to clipboard."
+    - Error: "Failed to open folder: <reason>" · Info: "Could not open the snapshots folder."
+    - Error: "Could not save settings to <settings.json>. Your changes are still here; check the log, then try Save again."
+    - Warning: "Could not change the startup setting. See the log for details."
+  Snapshots window (SnapshotsForm.cs, 960×620, min 720×460)
+    - "Saved snapshots" list (timestamp + tab count), detail pane (SnapshotFormatter listing)
+    - Buttons: Open folder · Copy · Refresh · Preview restore · Restore this one · Close
+    - Double-click / Enter restores; empty state text; Restore/Preview disabled when empty
+  Settings (SettingsForm.cs, 720×580) title "Terminal Session Keeper Settings (v1.3.2)"
+    - Snapshots: Take a snapshot automatically; Every [10] minutes (disabled when off); Keep the newest [20] snapshots; note
+    - Restoring: Put the tabs back automatically after a reboot (+note); Run each resume command… (+note);
+      Rebuild tabs into a new window named [tskrestore] (+note)
+    - Environment: NAME=value textarea (+note); Type a cd into each restored WSL tab (+note)
+    - Appearance: Keep saved tab titles… (+note); Remember tab colours (+note); Put tab colours back… (+note)
+      NEW: Theme — System (default) / Light / Dark
+    - General: Show a notification after a snapshot or restore; Start Terminal Session Keeper with Windows (+note)
+    - Updates: status card; Check for updates [frequency] + Check for updates button; SHA-256 callout
+    - About: icon + name + version, Built date • by alexlvcom; Release notes for v1.3.2 (220px box) + View full change history
+    - Diagnostics (split from About so no tab scrolls): Executable/Settings/Snapshots/Logs paths with Open; Copy details
+    - Footer Save / Cancel on every tab (Enter = Save, Esc/X = Cancel)
+  Change History window (650×480, resizable)
+  Update dialog "Update Terminal Session Keeper (v1.3.2)": Update / Later -> Downloading and verifying the installer…
+    -> timed out ("The download timed out. Check your connection and click Update to try again.") / failed / installer opened
+-->
+<!-- Shared AlexLV Settings foundation (inlined) -->
+<style>
+:root {
+  color-scheme: light dark;
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --radius: 5px;
+  --radius-lg: 8px;
+  /* Per-app identity: override these two in each mockup. */
+  --accent-light: #005fb8;   /* must give >= 4.5:1 on --surface (light) */
+  --accent-dark:  #60a5fa;   /* neutral default accent; >= 3:1 focus on dark canvas */
+}
+/* Light */
+:root, :root[data-theme="light"] {
+  --surface: #f5f5f5;   /* window canvas */
+  --chrome:  #ebebeb;   /* title row / nav / footer */
+  --raised:  #ffffff;   /* cards, inputs */
+  --border:  #d6d6d6;
+  --text:    #1b1b1b;
+  --muted:   #5f5f5f;
+  --accent:  var(--accent-light);
+  --on-accent: #ffffff;
+  --selection: color-mix(in srgb, var(--accent) 14%, transparent);
+  --danger: #b3261e;
+  --ok: #2e7d32;
+}
+/* Dark (neutral) */
+:root[data-theme="dark"] {
+  --surface: #1c1c1c;
+  --chrome:  #262626;
+  --raised:  #2d2d2d;
+  --border:  #3d3d3d;
+  --text:    #f0f0f0;
+  --muted:   #a6a6a6;
+  --accent:  var(--accent-dark);
+  --on-accent: #111111;
+  --selection: color-mix(in srgb, var(--accent) 18%, transparent);
+  --danger: #f2a198;
+  --ok: #9fd39f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #1c1c1c; --chrome: #262626; --raised: #2d2d2d; --border: #3d3d3d;
+    --text: #f0f0f0; --muted: #a6a6a6; --accent: var(--accent-dark); --on-accent: #111111;
+    --selection: color-mix(in srgb, var(--accent) 18%, transparent);
+    --danger: #f2a198; --ok: #9fd39f;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #6b6a66; font: 14px/1.45 var(--font); }
+body { display: grid; place-items: center; min-height: 100vh; padding: 32px 16px; }
+
+/* Mockup harness bar (not part of the app) */
+.harness { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 12px; align-items: center;
+  padding: 6px 16px; background: #111; color: #ddd; font-size: 12px; z-index: 10; }
+.harness b { color: #fff; }
+
+/* Native-sized window: 720px wide like the standard requires */
+.window { width: 720px; max-width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0,0,0,.35); display: flex; flex-direction: column; min-height: 560px; }
+
+/* One title row: icon, title (vN.N.N), section tabs, window controls */
+.titlebar { display: flex; align-items: center; gap: 10px; background: var(--chrome);
+  padding: 0 0 0 14px; height: 44px; border-bottom: 1px solid var(--border); user-select: none; }
+.titlebar .app-icon { width: 18px; height: 18px; border-radius: 4px; flex: none; }
+.titlebar .title { font-weight: 600; white-space: nowrap; }
+.titlebar .title small { color: var(--muted); font-weight: 400; }
+.winctl { margin-left: auto; display: flex; height: 100%; }
+.winctl span { width: 46px; display: grid; place-items: center; color: var(--muted); }
+.winctl span:last-child:hover { background: #c42b1c; color: #fff; }
+
+.tabs { display: flex; gap: 2px; padding: 0 16px; background: var(--chrome); border-bottom: 1px solid var(--border); }
+.tab { appearance: none; border: 0; background: none; color: var(--muted); font: inherit;
+  padding: 10px 12px 9px; border-bottom: 2px solid transparent; cursor: pointer; border-radius: 0; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+.page { padding: 22px 24px; flex: 1; display: none; }
+.page.active { display: block; }
+.page h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  margin: 0 0 10px; font-weight: 600; }
+.section + .section { margin-top: 20px; }
+
+.card { background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 16px; }
+.row + .row { border-top: 1px solid var(--border); }
+.row .label { flex: 1; min-width: 0; }
+.row .label span { display: block; color: var(--muted); font-size: 12.5px; }
+
+input[type="text"], input[type="number"], select, textarea {
+  font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 10px; min-height: 32px; }
+input[type="number"] { width: 76px; }
+.path { width: 100%; min-width: 460px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+button.btn { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 14px; min-height: 32px; cursor: pointer; white-space: nowrap; }
+button.btn:hover { border-color: var(--accent); }
+button.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+button.btn:disabled { opacity: .45; cursor: default; }
+
+/* Toggle switch */
+.switch { position: relative; width: 40px; height: 22px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch i { position: absolute; inset: 0; border-radius: 11px; background: var(--border); transition: background .15s; pointer-events: none; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--raised); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(18px); background: var(--on-accent); }
+.switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Segmented control (theme picker) */
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.segmented button { font: inherit; border: 0; background: var(--surface); color: var(--text); padding: 6px 14px; cursor: pointer; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+.status-card { display: flex; gap: 14px; align-items: center; padding: 16px; }
+.status-card .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); flex: none; }
+.muted { color: var(--muted); }
+.notes { font-size: 13px; max-height: 220px; min-height: 180px; overflow: auto; padding: 12px 16px; }
+
+/* Footer: Save/Cancel on every tab (shared standard) */
+.footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: var(--chrome);
+  border-top: 1px solid var(--border); }
+.dirty { margin-right: auto; align-self: center; color: var(--muted); font-size: 12.5px; }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111; color: #fff;
+  padding: 8px 14px; border-radius: var(--radius); font-size: 13px; opacity: 0; transition: opacity .2s; }
+.toast.show { opacity: 1; }
+</style>
+<script>
+/* Theme: 'system' (default) | 'light' | 'dark'. System follows Windows via prefers-color-scheme. */
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', choice);
+  document.querySelectorAll('[data-theme-choice]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice)));
+}
+function wireMockup() {
+  document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === tab.dataset.page));
+  }));
+  document.querySelectorAll('[data-theme-choice]').forEach(b =>
+    b.addEventListener('click', () => applyTheme(b.dataset.themeChoice)));
+  const toast = (msg) => { const t = document.querySelector('.toast'); if (!t) return;
+    t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1600); };
+  document.querySelectorAll('[data-preview]').forEach(b =>
+    b.addEventListener('click', () => toast('Preview: ' + b.dataset.preview)));
+  applyTheme('system');
+}
+document.addEventListener('DOMContentLoaded', wireMockup);
+</script>
+<style>
+/* ---- Terminal Session Keeper identity: the icon's prompt green on navy ---- */
+:root { --accent-light: #1d7347; --accent-dark: #78e0a0; }
+
+/* Native controls (spinners, selects, scrollbars) follow the forced theme too. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+.window[hidden] { display: none !important; }
+
+/* One fixed Settings height for every tab, so the window never jumps between tabs. */
+#settings-window { height: 648px; }
+/* Settings pages never scroll; content must fit, and overflowing content moves to its own tab. */
+#settings-window .page { overflow: hidden; }
+
+/* ---- Mockup stage (not part of the app) ---- */
+body { display: block; padding: 64px 16px 48px; }
+.harness { flex-wrap: wrap; row-gap: 6px; padding: 8px 16px; }
+.harness .group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.harness .sep { width: 1px; height: 18px; background: #444; }
+.harness button { font: inherit; font-size: 12px; color: #ddd; background: #262626; border: 1px solid #3a3a3a;
+  border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+.harness button:hover { border-color: #888; color: #fff; }
+.harness button[aria-pressed="true"] { background: #e6e6e6; color: #111; border-color: #e6e6e6; }
+.harness label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+.stage { display: grid; place-items: center; min-height: calc(100vh - 112px); }
+.screen { display: none; }
+.screen.active { display: block; }
+.caption { color: #ffffff; font-size: 12.5px; margin: 0 0 10px; text-align: center; }
+
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--text); }
+* { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+input, textarea { caret-color: var(--accent); }
+textarea { width: 100%; resize: vertical; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; min-height: 84px; }
+.window .titlebar .app-icon { display: block; }
+svg.icon { width: 18px; height: 18px; flex: none; }
+
+/* Settings rows */
+.row.sub { padding-left: 68px; }
+.row.disabled .label, .row.disabled .inline { opacity: .5; }
+.inline { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.note { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 62ch; }
+.field-error { color: var(--danger); font-size: 12.5px; margin-top: 4px; display: none; }
+.invalid .field-error { display: block; }
+.invalid input { border-color: var(--danger); }
+.stack { display: grid; gap: 8px; padding: 14px 16px; }
+.stack + .row { border-top: 1px solid var(--border); }
+
+/* Updates */
+.status-card .badge { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.status-card .badge.busy { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.status-card .badge.warn { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.status-card strong { display: block; }
+.spin { animation: spin .9s linear infinite; transform-origin: 50% 50%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.callout { padding: 14px 16px; display: flex; gap: 12px; }
+.callout p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+/* About */
+.about-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.about-head svg { width: 44px; height: 44px; border-radius: 9px; }
+.about-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.about-head .btn { margin-left: auto; }
+.paths { display: grid; grid-template-columns: 72px 1fr 34px; gap: 8px 10px; align-items: center; }
+.paths label { color: var(--muted); }
+/* Proportional text keeps the full installed EXE path readable inside the 720px window. */
+.paths .path { min-width: 460px; font-family: var(--font); font-size: 12.5px; padding: 6px 8px; }
+.pathbox { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 32px; line-height: 1.4; overflow-wrap: anywhere; user-select: text; cursor: text; }
+.paths { align-items: start; }
+.paths label { padding-top: 6px; }
+.icon-btn { width: 34px; min-height: 32px; padding: 0; display: grid; place-items: center; }
+.icon-btn svg { width: 17px; height: 17px; color: var(--muted); }
+.icon-btn:hover svg { color: var(--accent); }
+#p-about { padding-top: 18px; }
+/* About now holds only the header and notes, so the notes box can use the standard's full 220px. */
+#p-about .notes { height: 220px; min-height: 0; }
+.diag-head { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+.diag-head p { margin: 0; flex: 1; }
+/* A resizable box could push its tab past the window; it scrolls inside itself instead. */
+#s-env { resize: none; height: 96px; }
+.notes-head { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 8px; }
+.notes-head strong { font-weight: 600; }
+a.link { color: var(--accent); text-underline-offset: 3px; cursor: pointer; }
+.notes ul { margin: 6px 0 12px; padding-left: 18px; }
+.notes h4 { margin: 0; font-size: 12.5px; text-transform: none; color: var(--muted); font-weight: 600; }
+.about-actions { margin-top: 12px; }
+
+/* Generic secondary windows */
+.window.small { width: 460px; min-height: 0; }
+.window.wide { width: 960px; min-height: 620px; }
+.window.history { width: 650px; min-height: 480px; }
+.msg { display: flex; gap: 14px; padding: 22px 22px 18px; }
+.msg .glyph { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.msg .glyph.info { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.msg .glyph.warn { background: color-mix(in srgb, #d38b00 18%, transparent); color: #b87400; }
+:root[data-theme="dark"] .msg .glyph.warn { color: #f0b54a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg .glyph.warn { color: #f0b54a; } }
+.msg .glyph.error { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.msg p { margin: 0 0 8px; max-width: 46ch; }
+.msg p:last-child { margin-bottom: 0; }
+.progress { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 12px; }
+.progress i { display: block; height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .25s cubic-bezier(.16,1,.3,1); }
+
+/* Snapshots window */
+.snap-body { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
+.snap-list { border-right: 1px solid var(--border); background: var(--chrome); display: flex; flex-direction: column; min-height: 0; }
+.snap-list h2 { font-size: 12.5px; color: var(--muted); margin: 0; padding: 14px 16px 8px; font-weight: 600; }
+.snap-list ol { list-style: none; margin: 0; padding: 0 8px 8px; overflow: auto; flex: 1; }
+.snap-list li button { width: 100%; text-align: left; font: inherit; color: var(--text); background: none; border: 0;
+  border-radius: var(--radius); padding: 8px 10px; display: flex; justify-content: space-between; gap: 12px; cursor: pointer; }
+.snap-list li button:hover { background: var(--selection); }
+.snap-list li button[aria-selected="true"] { background: var(--selection); box-shadow: inset 0 0 0 1px var(--accent); }
+.snap-list time { font-variant-numeric: tabular-nums; }
+.snap-list .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.snap-detail { overflow: auto; padding: 16px 20px; }
+.snap-detail pre { margin: 0; font: 12.5px/1.55 "Cascadia Mono", Consolas, monospace; white-space: pre; color: var(--text); }
+.snap-detail .empty { color: var(--muted); max-width: 46ch; }
+.footer .left { margin-right: auto; display: flex; gap: 8px; }
+
+/* Tray */
+.taskbar { width: 520px; height: 48px; background: #202020; border-radius: 0 0 8px 8px; display: flex; align-items: center;
+  justify-content: flex-end; gap: 6px; padding: 0 12px; color: #ddd; font-size: 12px; position: relative; }
+:root[data-theme="light"] .taskbar { background: #e8e8e8; color: #222; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .taskbar { background: #e8e8e8; color: #222; } }
+.tray-icon { width: 30px; height: 30px; border-radius: 4px; display: grid; place-items: center; border: 0; background: none; cursor: pointer; }
+.tray-icon:hover, .tray-icon[aria-expanded="true"] { background: rgba(127,127,127,.25); }
+.clock { text-align: right; line-height: 1.25; padding-left: 8px; }
+.desktop { width: 520px; height: 300px; border-radius: 8px 8px 0 0; background: linear-gradient(160deg, #3c4a5e, #1d2633 70%); position: relative; }
+.menu { position: absolute; right: 64px; bottom: 54px; min-width: 232px; background: var(--raised); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; box-shadow: 0 12px 32px rgba(0,0,0,.35); display: none; }
+.menu.open { display: block; }
+.menu button { width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; font: inherit; color: var(--text);
+  background: none; border: 0; border-radius: var(--radius); padding: 7px 10px; cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: var(--selection); outline: none; }
+.menu button .key { text-decoration: underline; text-underline-offset: 2px; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 6px; }
+.menu svg { color: var(--muted); }
+.tooltip { position: absolute; right: 50px; bottom: 54px; background: var(--raised); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 5px 9px; font-size: 12.5px; white-space: nowrap; display: none; box-shadow: 0 6px 16px rgba(0,0,0,.25); }
+.tray-icon:hover + .tooltip { display: block; }
+.menu.open ~ .tooltip { display: none !important; }
+
+/* Balloon notification */
+.balloon { position: fixed; right: 20px; bottom: 20px; width: 360px; background: var(--raised); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: 0 14px 40px rgba(0,0,0,.35); padding: 14px 16px; display: flex; gap: 12px;
+  transform: translateY(16px); opacity: 0; pointer-events: none; transition: transform .22s cubic-bezier(.16,1,.3,1), opacity .22s; z-index: 30; }
+.balloon.show { transform: none; opacity: 1; pointer-events: auto; cursor: pointer; }
+.balloon strong { display: block; font-size: 13px; }
+.balloon span { font-size: 13px; color: var(--muted); }
+
+/* Modal layer */
+.modal-layer { position: fixed; inset: 0; background: rgba(0,0,0,.42); display: none; place-items: center; z-index: 20; padding: 16px; }
+.modal-layer.open { display: grid; }
+.modal-layer .window { box-shadow: 0 24px 64px rgba(0,0,0,.5); }
+
+.preview-tag { font-size: 11px; color: var(--muted); border: 1px dashed var(--border); border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-app" viewBox="0 0 32 32"><rect x="1" y="3" width="30" height="26" rx="5" fill="#181e2c"/><path d="M8 11l6 5-6 5M17 21h7" fill="none" stroke="#78e0a0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-spin" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-9 9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.2-3 7.6-7 9-4-1.4-7-4.8-7-9V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2.2 2.2L15.5 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9.5A1.5 1.5 0 0 0 19 8h-7l-2-2.5H5A1.5 1.5 0 0 0 3.5 7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="harness" role="toolbar" aria-label="Mockup screens">
+  <b>Terminal Session Keeper 1.3.2 — redesign mockup</b>
+  <span class="sep"></span>
+  <div class="group" id="screen-buttons">
+    <button data-screen="tray">Tray menu</button>
+    <button data-screen="settings">Settings</button>
+    <button data-screen="snapshots">Snapshots window</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <span>Dialogs:</span>
+    <button data-open="msg-no-snapshot">No snapshot</button>
+    <button data-open="msg-restore-ask">Restore anyway?</button>
+    <button data-open="dlg-update">Update available</button>
+    <button data-open="msg-up-to-date">Up to date</button>
+    <button data-open="msg-check-failed">Check failed</button>
+    <button data-open="msg-save-failed">Save failed</button>
+    <button data-open="msg-startup-failed">Startup failed</button>
+    <button data-open="msg-folder-failed">Open folder failed</button>
+    <button data-open="msg-copied">Details copied</button>
+    <button data-open="win-history">Change history</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <span>Balloons:</span>
+    <button data-balloon="saved">Saved</button>
+    <button data-balloon="restored">Restored</button>
+    <button data-balloon="none">No tabs</button>
+    <button data-balloon="error">Error</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <span>Theme:</span>
+    <button data-harness-theme="system" aria-pressed="true">System</button>
+    <button data-harness-theme="light">Light</button>
+    <button data-harness-theme="dark">Dark</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <label><input type="checkbox" id="sim-save-fail"> Simulate save failure</label>
+    <label>Update check:
+      <select id="sim-update" style="font-size:12px;min-height:0;padding:1px 4px;">
+        <option value="current">Up to date</option>
+        <option value="available" selected>1.3.3 available</option>
+        <option value="failed">Network failure</option>
+      </select></label>
+    <label>Download:
+      <select id="sim-download" style="font-size:12px;min-height:0;padding:1px 4px;">
+        <option value="ok" selected>Succeeds</option>
+        <option value="timeout">Times out</option>
+        <option value="fail">Checksum fails</option>
+      </select></label>
+    <label><input type="checkbox" id="sim-terminal-open" checked> Terminal window open</label>
+    <label><input type="checkbox" id="sim-empty"> No snapshots</label>
+  </div>
+</div>
+
+<main class="stage">
+
+<!-- =============================== TRAY =============================== -->
+<section class="screen" id="screen-tray">
+  <p class="caption">Right-click the tray icon. Double-click it to open Snapshots. Hover for the tooltip.</p>
+  <div class="desktop"></div>
+  <div class="taskbar">
+    <div class="menu" id="tray-menu" role="menu" aria-label="Terminal Session Keeper">
+      <button role="menuitem" data-action="snapshot-now"><svg class="icon"><use href="#i-camera"/></svg><span><span class="key">S</span>napshot now</span></button>
+      <button role="menuitem" data-action="restore-last"><svg class="icon"><use href="#i-restore"/></svg><span><span class="key">R</span>estore last snapshot</span></button>
+      <hr>
+      <button role="menuitem" data-action="open-snapshots"><svg class="icon"><use href="#i-list"/></svg><span>S<span class="key">n</span>apshots…</span></button>
+      <button role="menuitem" data-action="open-settings"><svg class="icon"><use href="#i-gear"/></svg><span>Se<span class="key">t</span>tings…</span></button>
+      <hr>
+      <button role="menuitem" data-action="exit"><svg class="icon"><use href="#i-exit"/></svg><span>E<span class="key">x</span>it</span></button>
+    </div>
+    <button class="tray-icon" id="tray-icon" aria-haspopup="menu" aria-expanded="false" aria-label="Terminal Session Keeper"><svg class="icon" style="width:20px;height:20px"><use href="#i-app"/></svg></button>
+    <div class="tooltip" id="tray-tooltip">Terminal Session Keeper v1.3.2 — every 10 minutes</div>
+    <div class="clock">11:42<br>2026-10-20</div>
+  </div>
+</section>
+
+<!-- =============================== SETTINGS =============================== -->
+<section class="screen" id="screen-settings">
+  <div class="window" id="settings-window" role="dialog" aria-labelledby="settings-title">
+    <div class="titlebar">
+      <svg class="app-icon"><use href="#i-app"/></svg>
+      <div class="title" id="settings-title">Terminal Session Keeper Settings <small>(v1.3.2)</small></div>
+      <div class="winctl"><span aria-hidden="true">—</span><span data-action="settings-cancel" title="Close (discards unsaved changes)">✕</span></div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-page="p-snapshots" aria-selected="true">Snapshots</button>
+      <button class="tab" role="tab" data-page="p-restoring" aria-selected="false">Restoring</button>
+      <button class="tab" role="tab" data-page="p-environment" aria-selected="false">Environment</button>
+      <button class="tab" role="tab" data-page="p-appearance" aria-selected="false">Appearance</button>
+      <button class="tab" role="tab" data-page="p-general" aria-selected="false">General</button>
+      <button class="tab" role="tab" data-page="p-updates" aria-selected="false">Updates</button>
+      <button class="tab" role="tab" data-page="p-about" aria-selected="false">About</button>
+      <button class="tab" role="tab" data-page="p-diagnostics" aria-selected="false">Diagnostics</button>
+    </nav>
+
+    <div class="page active" id="p-snapshots">
+      <div class="section">
+        <h2>Automatic snapshots</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Take a snapshot automatically</div>
+            <label class="switch"><input type="checkbox" id="s-auto" checked data-draft><i></i></label>
+          </div>
+          <div class="row sub" id="row-interval">
+            <div class="label">Every</div>
+            <div class="inline"><input type="number" id="s-interval" value="10" min="1" max="1440" data-draft> minutes</div>
+          </div>
+          <div class="row sub" id="row-interval-error" style="display:none;min-height:0;padding-top:0">
+            <div class="field-error" style="display:block">Enter a number of minutes from 1 to 1440.</div>
+          </div>
+          <div class="row">
+            <div class="label">Keep the newest</div>
+            <div class="inline"><input type="number" id="s-keep" value="20" min="1" max="500" data-draft> snapshots</div>
+          </div>
+          <div class="row" id="row-keep-error" style="display:none;min-height:0;padding-top:0">
+            <div class="field-error" style="display:block">Keep between 1 and 500 snapshots.</div>
+          </div>
+        </div>
+        <p class="note" style="margin-top:10px">A snapshot is a few KB. Nothing is written when no tabs are open, so a good snapshot is never replaced by an empty one.</p>
+      </div>
+    </div>
+
+    <div class="page" id="p-restoring">
+      <div class="section">
+        <h2>After a reboot</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Put the tabs back automatically after a reboot
+              <span>Only on the first run after a reboot, and only when no terminal window is already open — restoring beside a live window would put both into the next snapshot.</span></div>
+            <label class="switch"><input type="checkbox" id="s-reboot" checked data-draft><i></i></label>
+          </div>
+          <div class="row">
+            <div class="label">Run each resume command instead of leaving it at the prompt
+              <span>Off by default: a dozen agents and their MCP servers all starting at once, right after a reboot, is rarely what you want.</span></div>
+            <label class="switch"><input type="checkbox" id="s-resume" data-draft><i></i></label>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Restore window</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Rebuild tabs into a new window named
+              <span>Every restore opens its own window and the name carries the time it ran, so a restore never adds its tabs to the window an earlier one built.</span></div>
+            <input type="text" id="s-window" value="tskrestore" style="width:220px" data-draft>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="p-environment">
+      <div class="section">
+        <h2>Restored WSL tabs</h2>
+        <div class="card">
+          <div class="stack">
+            <label for="s-env">Custom environment variables for restored WSL tabs, one NAME=value per line:</label>
+            <textarea id="s-env" spellcheck="false" data-draft>CLAUDE_CODE_RESUMED=1
+NODE_OPTIONS=--max-old-space-size=8192</textarea>
+            <div class="note">Added only to the WSL tabs a restore opens. Tabs you open yourself are not affected.</div>
+          </div>
+          <div class="row">
+            <div class="label">Type a cd into each restored WSL tab
+              <span>Runs cd into the tab's saved folder once its shell has started, in case the shell changed directory while starting up. Turn it off if yours does not.</span></div>
+            <label class="switch"><input type="checkbox" id="s-cd" checked data-draft><i></i></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="p-appearance">
+      <div class="section">
+        <h2>App theme</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Theme
+              <span>System follows your Windows light or dark mode and changes with it.</span></div>
+            <div class="segmented" role="group" aria-label="Theme">
+              <button data-theme-choice="system" aria-pressed="true">System</button>
+              <button data-theme-choice="light" aria-pressed="false">Light</button>
+              <button data-theme-choice="dark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Restored tabs</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Keep saved tab titles, even when the shell renames a tab
+              <span>Otherwise a restored tab keeps its saved title until the shell or the agent renames it, which is usually what you want.</span></div>
+            <label class="switch"><input type="checkbox" id="s-pin" data-draft><i></i></label>
+          </div>
+          <div class="row">
+            <div class="label">Remember tab colours
+              <span>Windows Terminal exposes no API for tab colours, so the window is asked to render itself and the colour is read from the tab's own pixels. A colour has to be read the same twice before it is kept.</span></div>
+            <label class="switch"><input type="checkbox" id="s-sample" checked data-draft><i></i></label>
+          </div>
+          <div class="row">
+            <div class="label">Put tab colours back when tabs are rebuilt
+              <span>Applied the way the colour picker applies one, so the picker's Reset clears it again. Needs a setTabColor action in Windows Terminal's settings.json for a second or two; it is removed straight afterwards.</span></div>
+            <label class="switch"><input type="checkbox" id="s-restorecolors" checked data-draft><i></i></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="p-general">
+      <div class="section">
+        <h2>General</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label">Show a notification after a snapshot or restore</div>
+            <label class="switch"><input type="checkbox" id="s-notify" checked data-draft><i></i></label>
+          </div>
+          <div class="row">
+            <div class="label">Start Terminal Session Keeper with Windows
+              <span>Autostart uses the current-user Run key. No elevation, no scheduled task.</span></div>
+            <label class="switch"><input type="checkbox" id="s-startup" checked data-draft><i></i></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="p-updates">
+      <div class="section">
+        <h2>Status</h2>
+        <div class="card status-card" id="update-status" aria-live="polite">
+          <div class="badge" id="update-badge"><svg class="icon"><use href="#i-check"/></svg></div>
+          <div><strong id="update-title">Terminal Session Keeper is up to date</strong>
+            <span class="muted" id="update-sub">Version 1.3.2 is the latest stable version • Last checked 2026-10-20 10:36</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Schedule</h2>
+        <div class="card">
+          <div class="row">
+            <div class="label"><label for="s-freq">Check for updates</label>
+              <span>Checks at startup, then at this interval. Never turns off automatic checks.</span></div>
+            <div class="controls">
+              <select id="s-freq" data-draft>
+                <option value="hourly" selected>Once an hour</option>
+                <option value="daily">Once a day (default)</option>
+                <option value="weekly">Once a week</option>
+                <option value="monthly">Once a month</option>
+                <option value="never">Never</option>
+              </select>
+              <button class="btn" id="check-now">Check for updates</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="card callout">
+          <svg class="icon" style="color:var(--accent)"><use href="#i-shield"/></svg>
+          <div><strong>Verified installers</strong>
+            <p>Setup installers are downloaded from official GitHub releases and verified with SHA-256 before running. Scheduled background checks stay quiet and never interrupt terminal restoration.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="p-about">
+      <div class="about-head">
+        <svg><use href="#i-app"/></svg>
+        <div><h3>Terminal Session Keeper <span class="muted" style="font-weight:400">v1.3.2</span></h3>
+          <span class="muted">Built 2026-10-20 • by alexlvcom</span></div>
+      </div>
+      <div class="notes-head"><strong>Release notes for v1.3.2:</strong> <a class="link" data-open="win-history">View full change history</a></div>
+      <div class="card notes" tabindex="0">
+        <h4>Main changes</h4>
+        <ul>
+          <li>Settings now saves every preference, including the update check frequency, only when you click Save. Cancel, Esc, or closing the window discards all unsaved changes, so Cancel always undoes a frequency change.</li>
+          <li>Save reports an error and keeps Settings open with your edits when settings.json cannot be written, instead of closing as if it had worked.</li>
+        </ul>
+        <h4>Other updates</h4>
+        <ul>
+          <li>Settings are written through a temporary file so a failed save never leaves a half-written settings.json.</li>
+          <li>Saving Settings keeps the last update check time recorded while the window was open.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="page" id="p-diagnostics">
+      <div class="diag-head">
+        <p class="muted">Where Terminal Session Keeper keeps its files. Include these details when you report a problem.</p>
+        <button class="btn" data-open="msg-copied">Copy details</button>
+      </div>
+      <div class="paths">
+        <label id="l-exe">Executable</label>
+        <div class="path pathbox" id="a-exe" aria-labelledby="l-exe" role="textbox" aria-readonly="true" tabindex="0">C:\Users\alexander.yazemov\AppData\Local\Programs\Terminal Session Keeper\TerminalSessionKeeper.exe</div>
+        <button class="btn icon-btn" title="Open folder" aria-label="Open the executable's folder" data-preview="opens the folder in Explorer"><svg><use href="#i-folder"/></svg></button>
+        <label id="l-settings">Settings</label>
+        <div class="path pathbox" id="a-settings" aria-labelledby="l-settings" role="textbox" aria-readonly="true" tabindex="0">C:\Users\alexander.yazemov\AppData\Local\TerminalSessionKeeper\settings.json</div>
+        <button class="btn icon-btn" title="Open folder" aria-label="Open the settings folder" data-preview="opens the folder in Explorer"><svg><use href="#i-folder"/></svg></button>
+        <label id="l-snaps">Snapshots</label>
+        <div class="path pathbox" id="a-snaps" aria-labelledby="l-snaps" role="textbox" aria-readonly="true" tabindex="0">C:\Users\alexander.yazemov\AppData\Local\TerminalSessionKeeper\Snapshots</div>
+        <button class="btn icon-btn" title="Open folder" aria-label="Open the snapshots folder" data-preview="opens the folder in Explorer"><svg><use href="#i-folder"/></svg></button>
+        <label id="l-logs">Logs</label>
+        <div class="path pathbox" id="a-logs" aria-labelledby="l-logs" role="textbox" aria-readonly="true" tabindex="0">C:\Users\alexander.yazemov\AppData\Local\TerminalSessionKeeper\Logs</div>
+        <button class="btn icon-btn" title="Open folder" aria-label="Open the logs folder" data-preview="opens the folder in Explorer"><svg><use href="#i-folder"/></svg></button>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="dirty" id="dirty-note"></span>
+      <button class="btn primary" id="settings-save">Save</button>
+      <button class="btn" data-action="settings-cancel">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<!-- =============================== SNAPSHOTS =============================== -->
+<section class="screen" id="screen-snapshots">
+  <div class="window wide" role="dialog" aria-labelledby="snap-title">
+    <div class="titlebar">
+      <svg class="app-icon"><use href="#i-app"/></svg>
+      <div class="title" id="snap-title">Snapshots <small>· Terminal Session Keeper</small></div>
+      <div class="winctl"><span aria-hidden="true">—</span><span aria-hidden="true">▢</span><span data-action="close-snapshots">✕</span></div>
+    </div>
+    <div class="snap-body">
+      <div class="snap-list">
+        <h2>Saved snapshots</h2>
+        <ol id="snap-list" role="listbox" aria-label="Saved snapshots"></ol>
+      </div>
+      <div class="snap-detail" id="snap-detail"></div>
+    </div>
+    <div class="footer">
+      <div class="left">
+        <button class="btn" data-open="msg-folder-failed-snap" data-preview-ok="opens the snapshots folder in Explorer">Open folder</button>
+        <button class="btn" data-preview="copies the listing to the clipboard">Copy</button>
+        <button class="btn" id="snap-refresh">Refresh</button>
+      </div>
+      <button class="btn" id="snap-preview">Preview restore</button>
+      <button class="btn primary" id="snap-restore">Restore this one</button>
+      <button class="btn" data-action="close-snapshots">Close</button>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- =============================== MODALS =============================== -->
+<div class="modal-layer" id="modal-layer">
+
+  <div class="window small" id="msg-no-snapshot" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-info"/></svg></div><div><p>There is no saved snapshot to restore yet.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-restore-ask" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph warn"><svg class="icon"><use href="#i-warn"/></svg></div>
+      <div><p><strong>A Windows Terminal window is already open.</strong></p>
+        <p>Restoring will open a second window with <span class="ask-count">7</span> more tab(s). The next snapshot would then capture both windows together.</p>
+        <p>Restore anyway?</p></div></div>
+    <div class="footer"><button class="btn" data-action="restore-confirm">Yes</button><button class="btn primary" data-close autofocus>No</button></div>
+  </div>
+
+  <div class="window small" id="dlg-update" hidden role="dialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Update Terminal Session Keeper <small>(v1.3.2)</small></div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph info" id="upd-glyph"><svg class="icon"><use href="#i-info"/></svg></div>
+      <div style="flex:1"><p id="upd-msg1"><strong>Version 1.3.3 is available.</strong> You have 1.3.2.</p>
+        <p id="upd-msg2">Update will download and open the installer. Setup will close the app and restart it after updating.</p>
+        <div class="progress" id="upd-progress" hidden><i></i></div></div></div>
+    <div class="footer"><button class="btn primary" id="upd-install">Update</button><button class="btn" data-close id="upd-later">Later</button></div>
+  </div>
+
+  <div class="window small" id="msg-up-to-date" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-check"/></svg></div><div><p>You are running version 1.3.2.</p><p>No newer installer version is available.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-check-failed" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph warn"><svg class="icon"><use href="#i-warn"/></svg></div><div><p>Could not check for updates. Please try again later.</p><p class="muted">No such host is known. (api.github.com:443)</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-save-failed" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph error"><svg class="icon"><use href="#i-error"/></svg></div><div><p>Could not save settings to C:\Users\alexander.yazemov\AppData\Local\TerminalSessionKeeper\settings.json.</p><p>Your changes are still here; check the log, then try Save again.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-startup-failed" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph warn"><svg class="icon"><use href="#i-warn"/></svg></div><div><p>Could not change the startup setting. See the log for details.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-folder-failed" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph error"><svg class="icon"><use href="#i-error"/></svg></div><div><p>Failed to open folder: Access to the path is denied.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-folder-failed-snap" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-info"/></svg></div><div><p>Could not open the snapshots folder.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window small" id="msg-copied" hidden role="alertdialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper</div><div class="winctl"><span data-close>✕</span></div></div>
+    <div class="msg"><div class="glyph info"><svg class="icon"><use href="#i-check"/></svg></div><div><p>Diagnostic details copied to clipboard.</p></div></div>
+    <div class="footer"><button class="btn primary" data-close>OK</button></div>
+  </div>
+
+  <div class="window history" id="win-history" hidden role="dialog">
+    <div class="titlebar"><svg class="app-icon"><use href="#i-app"/></svg><div class="title">Terminal Session Keeper Change History</div><div class="winctl"><span aria-hidden="true">—</span><span aria-hidden="true">▢</span><span data-close>✕</span></div></div>
+    <div class="snap-detail" style="flex:1;max-height:440px"><pre>[1.3.2] - 2026-10-20
+
+Main changes
+- Settings now saves every preference, including the update check
+  frequency, only when you click Save. Cancel, Esc, or closing the
+  window discards all unsaved changes.
+- Save reports an error and keeps Settings open with your edits when
+  settings.json cannot be written.
+
+Other updates
+- Settings are written through a temporary file so a failed save never
+  leaves a half-written settings.json.
+- Saving Settings keeps the last update check time recorded while the
+  window was open.
+
+[1.3.1] - 2026-10-19
+- Start the update download timeout when Update is clicked. Report
+  timeouts and allow retrying instead of leaving the download dialog stuck.
+
+[1.3.0] - 2026-10-17
+
+Main changes
+- Added Windows installer (TerminalSessionKeeper-Setup.exe) installing
+  per-user to %LOCALAPPDATA%\Programs\Terminal Session Keeper.
+- Added in-app update checks against GitHub releases with configurable
+  check frequency and SHA-256 verification.
+- Added graceful application shutdown via TerminalSessionKeeperListener.
+
+[1.2.3] - 2026-10-06
+- Snapshots window: the list fits each entry without dragging and shows
+  how many tabs each snapshot has.
+- Snapshots window: double-click (or Enter) a snapshot to restore it.</pre></div>
+  </div>
+</div>
+
+<div class="balloon" id="balloon" role="status">
+  <div class="glyph-b" id="balloon-glyph"></div>
+  <div><strong>Terminal Session Keeper</strong><span id="balloon-text"></span></div>
+</div>
+<div class="toast"></div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  /* ---------------- screens ---------------- */
+  function showScreen(id) {
+    $$('.screen').forEach(s => s.classList.toggle('active', s.id === 'screen-' + id));
+    $$('#screen-buttons button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.screen === id)));
+    closeMenu();
+    if (id === 'settings') beginSettings();
+    if (id === 'snapshots') renderSnapshots();
+  }
+  $$('#screen-buttons button').forEach(b => b.addEventListener('click', () => showScreen(b.dataset.screen)));
+
+  /* ---------------- modals ---------------- */
+  const layer = $('#modal-layer');
+  let modalStack = [];
+  function openModal(id) {
+    const win = document.getElementById(id); if (!win) return;
+    $$('#modal-layer > .window').forEach(w => w.hidden = w.id !== id);
+    layer.classList.add('open'); modalStack.push(id);
+    if (id === 'dlg-update') resetUpdateDialog();
+    const focus = win.querySelector('[autofocus]') || win.querySelector('.footer .primary') || win.querySelector('button');
+    setTimeout(() => focus && focus.focus(), 0);
+  }
+  function closeModal() {
+    modalStack.pop();
+    if (modalStack.length) { openModal(modalStack.pop()); return; }
+    layer.classList.remove('open'); $$('#modal-layer > .window').forEach(w => w.hidden = true);
+  }
+  document.addEventListener('click', e => {
+    const opener = e.target.closest('[data-open]');
+    if (opener) { e.preventDefault(); openModal(opener.dataset.open); return; }
+    if (e.target.closest('[data-close]')) closeModal();
+  });
+
+  /* ---------------- tray ---------------- */
+  const menu = $('#tray-menu'), trayIcon = $('#tray-icon');
+  function closeMenu() { menu.classList.remove('open'); trayIcon.setAttribute('aria-expanded', 'false'); }
+  trayIcon.addEventListener('contextmenu', e => { e.preventDefault(); menu.classList.add('open'); trayIcon.setAttribute('aria-expanded', 'true'); menu.querySelector('button').focus(); });
+  trayIcon.addEventListener('click', () => { menu.classList.toggle('open'); trayIcon.setAttribute('aria-expanded', String(menu.classList.contains('open'))); });
+  trayIcon.addEventListener('dblclick', () => showScreen('snapshots'));
+  document.addEventListener('click', e => { if (!e.target.closest('#tray-menu, #tray-icon')) closeMenu(); });
+  menu.addEventListener('keydown', e => {
+    const items = $$('button', menu), i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    if (e.key === 'Escape') { closeMenu(); trayIcon.focus(); }
+  });
+
+  /* ---------------- balloons ---------------- */
+  const balloons = {
+    saved: ['info', 'Saved 7 tabs, 3 resumable.'],
+    restored: ['info', "Restored 7 of 7 tab(s) into a new window, 'tskrestore'."],
+    none: ['warn', 'No Windows Terminal tabs are open.'],
+    error: ['error', 'Something went wrong. See the log for details.'],
+  };
+  let balloonTimer;
+  function balloon(kind) {
+    if (!saved['s-notify']) { toast('Preview: no balloon — notifications are turned off in Settings'); return; }
+    const [glyph, text] = balloons[kind];
+    $('#balloon-glyph').className = 'msg-g';
+    $('#balloon-glyph').innerHTML = `<div class="glyph ${glyph}" style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center"><svg class="icon"><use href="#i-${glyph === 'warn' ? 'warn' : glyph === 'error' ? 'error' : 'check'}"/></svg></div>`;
+    $('#balloon-text').textContent = text;
+    const b = $('#balloon'); b.classList.add('show');
+    clearTimeout(balloonTimer); balloonTimer = setTimeout(() => b.classList.remove('show'), 5000);
+  }
+  $('#balloon').addEventListener('click', () => { $('#balloon').classList.remove('show'); showScreen('snapshots'); });
+  $$('[data-balloon]').forEach(b => b.addEventListener('click', () => balloon(b.dataset.balloon)));
+  // .glyph styles live under .msg; reuse them for the balloon
+  const st = document.createElement('style');
+  st.textContent = '.msg-g .glyph.info{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}.msg-g .glyph.warn{background:color-mix(in srgb,#d38b00 18%,transparent);color:#c07a00}.msg-g .glyph.error{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}';
+  document.head.appendChild(st);
+
+  function toast(msg) { const t = $('.toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1800); }
+
+  /* ---------------- tray actions ---------------- */
+  function hasSnapshots() { return !$('#sim-empty').checked; }
+  function requestRestore(count) {
+    if (!hasSnapshots()) { openModal('msg-no-snapshot'); return; }
+    if ($('#sim-terminal-open').checked) { $$('.ask-count').forEach(s => s.textContent = count); openModal('msg-restore-ask'); }
+    else balloon('restored');
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-action]'); if (!a) return;
+    switch (a.dataset.action) {
+      case 'snapshot-now': closeMenu(); balloon($('#sim-terminal-open').checked ? 'saved' : 'none'); break;
+      case 'restore-last': closeMenu(); requestRestore(7); break;
+      case 'open-snapshots': showScreen('snapshots'); break;
+      case 'open-settings': showScreen('settings'); break;
+      case 'exit': closeMenu(); toast('Preview: the tray icon is removed and the app exits'); break;
+      case 'restore-confirm': closeModal(); balloon('restored'); break;
+      case 'settings-cancel': cancelSettings(); break;
+      case 'close-snapshots': showScreen('tray'); break;
+    }
+  });
+
+  /* ---------------- settings draft ---------------- */
+  const drafts = $$('[data-draft]');
+  const read = el => el.type === 'checkbox' ? el.checked : el.value;
+  const write = (el, v) => { if (el.type === 'checkbox') el.checked = v; else el.value = v; };
+  let saved = {}; drafts.forEach(el => saved[el.id] = read(el));
+  let savedTheme = 'system', draftTheme = 'system';
+
+  function syncEnabled() {
+    const on = $('#s-auto').checked;
+    $('#s-interval').disabled = !on; $('#row-interval').classList.toggle('disabled', !on);
+  }
+  function dirtyCount() {
+    return drafts.filter(el => read(el) !== saved[el.id]).length + (draftTheme !== savedTheme ? 1 : 0);
+  }
+  function refreshDirty() {
+    const n = dirtyCount();
+    $('#dirty-note').textContent = n ? `${n} unsaved change${n === 1 ? '' : 's'}` : '';
+  }
+  drafts.forEach(el => el.addEventListener('input', () => { syncEnabled(); validate(false); refreshDirty(); }));
+  drafts.forEach(el => el.addEventListener('change', () => { syncEnabled(); refreshDirty(); }));
+
+  // Theme is a draft too: it previews live, Save keeps it, Cancel puts the saved one back.
+  $$('#p-appearance [data-theme-choice]').forEach(b => b.addEventListener('click', () => {
+    draftTheme = b.dataset.themeChoice; setHarnessTheme(draftTheme); refreshDirty();
+  }));
+  function setHarnessTheme(choice) {
+    applyTheme(choice);
+    $$('[data-harness-theme]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.harnessTheme === choice)));
+  }
+  $$('[data-harness-theme]').forEach(b => b.addEventListener('click', () => {
+    savedTheme = draftTheme = b.dataset.harnessTheme; setHarnessTheme(savedTheme); refreshDirty();
+  }));
+
+  function validate(show) {
+    const iv = Number($('#s-interval').value), kp = Number($('#s-keep').value);
+    const ivBad = $('#s-auto').checked && !(Number.isInteger(iv) && iv >= 1 && iv <= 1440);
+    const kpBad = !(Number.isInteger(kp) && kp >= 1 && kp <= 500);
+    if (show || !ivBad) { $('#row-interval-error').style.display = ivBad ? '' : 'none'; $('#row-interval').classList.toggle('invalid', ivBad); }
+    if (show || !kpBad) { $('#row-keep-error').style.display = kpBad ? '' : 'none'; }
+    return !(ivBad || kpBad);
+  }
+  function selectTab(pageId) {
+    $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.page === pageId)));
+    $$('.page').forEach(p => p.classList.toggle('active', p.id === pageId));
+  }
+  function beginSettings() { drafts.forEach(el => write(el, saved[el.id])); draftTheme = savedTheme; setHarnessTheme(savedTheme); syncEnabled(); validate(true); refreshDirty(); }
+  function saveSettings() {
+    if (!validate(true)) { selectTab('p-snapshots'); toast('Fix the highlighted value, then Save again'); return; }
+    if ($('#sim-save-fail').checked) { openModal('msg-save-failed'); return; }
+    drafts.forEach(el => saved[el.id] = read(el)); savedTheme = draftTheme;
+    $('#tray-tooltip').textContent = 'Terminal Session Keeper v1.3.2' + (saved['s-auto'] ? ` — every ${saved['s-interval'] == 1 ? 'minute' : saved['s-interval'] + ' minutes'}` : '');
+    refreshDirty(); toast('Preview: saved — timers and update schedule applied without restart');
+    showScreen('tray');
+  }
+  function cancelSettings() {
+    const n = dirtyCount();
+    drafts.forEach(el => write(el, saved[el.id])); draftTheme = savedTheme; setHarnessTheme(savedTheme); syncEnabled(); validate(true); refreshDirty();
+    if (n) toast(`Preview: ${n} unsaved change${n === 1 ? '' : 's'} discarded`);
+    showScreen('tray');
+  }
+  $('#settings-save').addEventListener('click', saveSettings);
+  document.addEventListener('keydown', e => {
+    if (layer.classList.contains('open')) {
+      if (e.key === 'Escape') closeModal();
+      return;
+    }
+    if (!$('#screen-settings').classList.contains('active')) {
+      if (e.key === 'Escape' && $('#screen-snapshots').classList.contains('active') && !e.target.closest('#snap-list')) showScreen('tray');
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); cancelSettings(); }
+    if (e.key === 'Enter' && !e.target.matches('textarea, button, a')) { e.preventDefault(); saveSettings(); }
+  });
+
+  /* ---------------- updates ---------------- */
+  function setStatus(kind, title, sub) {
+    const badge = $('#update-badge');
+    badge.className = 'badge' + (kind === 'busy' ? ' busy' : kind === 'warn' ? ' warn' : '');
+    badge.innerHTML = `<svg class="icon ${kind === 'busy' ? 'spin' : ''}"><use href="#i-${kind === 'busy' ? 'spin' : kind === 'warn' ? 'warn' : kind === 'info' ? 'info' : 'check'}"/></svg>`;
+    $('#update-title').textContent = title; $('#update-sub').textContent = sub;
+  }
+  $('#check-now').addEventListener('click', () => {
+    const btn = $('#check-now'); btn.disabled = true; btn.textContent = 'Checking…';
+    setStatus('busy', 'Checking GitHub for updates…', 'Version 1.3.2 • Uses your saved schedule, not unsaved changes');
+    setTimeout(() => {
+      btn.disabled = false; btn.textContent = 'Check for updates';
+      const sim = $('#sim-update').value, now = '2026-10-20 11:42';
+      if (sim === 'current') { setStatus('ok', 'Terminal Session Keeper is up to date', `Version 1.3.2 is the latest stable version • Last checked ${now}`); openModal('msg-up-to-date'); }
+      else if (sim === 'available') { setStatus('info', 'Version 1.3.3 is available', `You have 1.3.2 • Last checked ${now}`); openModal('dlg-update'); }
+      else { setStatus('warn', 'Could not check for updates', 'Version 1.3.2 • Check your connection and try again'); openModal('msg-check-failed'); }
+    }, 1100);
+  });
+
+  function resetUpdateDialog() {
+    $('#upd-glyph').className = 'glyph info'; $('#upd-glyph').innerHTML = '<svg class="icon"><use href="#i-info"/></svg>';
+    $('#upd-msg1').innerHTML = '<strong>Version 1.3.3 is available.</strong> You have 1.3.2.';
+    $('#upd-msg2').textContent = 'Update will download and open the installer. Setup will close the app and restart it after updating.';
+    $('#upd-progress').hidden = true; $('#upd-progress i').style.transform = 'scaleX(0)';
+    $('#upd-install').disabled = false; $('#upd-install').textContent = 'Update';
+  }
+  $('#upd-install').addEventListener('click', () => {
+    const btn = $('#upd-install'); btn.disabled = true;
+    $('#upd-msg1').innerHTML = '<strong>Downloading and verifying the installer…</strong>';
+    $('#upd-msg2').textContent = 'TerminalSessionKeeper-Setup.exe from github.com/alexlvcom/TerminalSessionKeeper';
+    $('#upd-progress').hidden = false;
+    let pct = 0; const outcome = $('#sim-download').value;
+    const stopAt = outcome === 'timeout' ? 46 : 100;
+    const tick = setInterval(() => {
+      pct = Math.min(stopAt, pct + 9); $('#upd-progress i').style.transform = `scaleX(${pct / 100})`;
+      if (pct < stopAt) return;
+      clearInterval(tick);
+      setTimeout(() => {
+        if (outcome === 'ok') {
+          $('#upd-glyph').innerHTML = '<svg class="icon"><use href="#i-check"/></svg>';
+          $('#upd-msg1').innerHTML = '<strong>Verified installer opened.</strong>';
+          $('#upd-msg2').textContent = 'SHA-256 matched. Setup will close Terminal Session Keeper and restart it after updating.';
+          btn.textContent = 'Update'; toast('Preview: setup opens; this dialog closes');
+          setTimeout(closeModal, 1400);
+        } else {
+          $('#upd-glyph').className = 'glyph warn'; $('#upd-glyph').innerHTML = '<svg class="icon"><use href="#i-warn"/></svg>';
+          $('#upd-progress').hidden = true;
+          if (outcome === 'timeout') { $('#upd-msg1').innerHTML = '<strong>The download timed out.</strong>'; $('#upd-msg2').textContent = 'Check your connection and click Update to try again.'; }
+          else { $('#upd-msg1').innerHTML = '<strong>Update failed. Please try again.</strong>'; $('#upd-msg2').textContent = 'Installer checksum did not match. The installer was not started.'; }
+          btn.disabled = false; btn.textContent = 'Try again';
+        }
+      }, outcome === 'timeout' ? 900 : 200);
+    }, 160);
+  });
+
+  /* ---------------- snapshots window ---------------- */
+  const snapshots = [
+    ['2026-10-20  11:40:02', 7], ['2026-10-20  11:30:01', 7], ['2026-10-20  11:20:00', 6], ['2026-10-20  11:10:03', 6],
+    ['2026-10-20  10:58:47', 5], ['2026-10-19  22:40:11', 9], ['2026-10-19  22:30:09', 9], ['2026-10-19  18:12:55', 1],
+  ];
+  let selected = 0;
+  function listing(i) {
+    const [stamp, tabs] = snapshots[i];
+    const file = `C:\\Users\\alexander.yazemov\\AppData\\Local\\TerminalSessionKeeper\\Snapshots\\snapshot-${stamp.replace(/[ :-]+/g, '')}.json`;
+    return `Captured  ${stamp.replace('  ', ' ')}
+Machine   ECD-LT-0412\\alexander.yazemov
+Tabs      ${tabs}
+File      ${file}
+
+Window 18244  —  claude: Settings save model
+──────────────────────────────────────────────────────────────────
+  1. claude: Settings save model
+     wsl        /home/alexanderyazemov/source/alexlvcom
+     branch     master
+     resume     claude --resume 4f1c2b9e-7d1a-4c55-9a40-2d3e8f0b61aa
+  2. KeyFlip build
+     pwsh       C:\\projects\\KeyFlip
+     branch     master
+  3. codex: tunella sync
+     wsl        /home/alexanderyazemov/source/sites/tunella-web
+     resume     codex resume 0199ad4e
+  4. opcart
+     wsl        /home/alexanderyazemov/source/opcart
+     branch     PDM-178822-Fix-Cart-Totals
+  5. logs
+     wsl        /var/log
+  6. (untitled)
+     cmd        (directory unknown)
+${tabs > 6 ? `  7. claude
+     wsl        /home/alexanderyazemov/source/utils
+     resume     claude: no resumable session found` : ''}`.trimEnd();
+  }
+  function renderSnapshots() {
+    const list = $('#snap-list'), detail = $('#snap-detail');
+    const empty = !hasSnapshots();
+    $('#snap-restore').disabled = empty; $('#snap-preview').disabled = empty;
+    if (empty) {
+      list.innerHTML = '';
+      detail.innerHTML = '<p class="empty"><strong style="color:var(--text)">No snapshots yet.</strong><br>Use "Snapshot now" from the tray menu, with the tabs you want saved open.</p>';
+      return;
+    }
+    list.innerHTML = snapshots.map(([stamp, n], i) =>
+      `<li><button role="option" aria-selected="${i === selected}" data-i="${i}"><time>${stamp}</time><span class="count">${n === 1 ? '1 tab' : n + ' tabs'}</span></button></li>`).join('');
+    detail.innerHTML = `<pre>${listing(selected).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`;
+  }
+  $('#snap-list').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; selected = +b.dataset.i; renderSnapshots(); $(`#snap-list button[data-i="${selected}"]`).focus(); });
+  $('#snap-list').addEventListener('dblclick', e => { if (e.target.closest('button')) requestRestore(snapshots[selected][1]); });
+  $('#snap-list').addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); selected = Math.max(0, Math.min(snapshots.length - 1, selected + (e.key === 'ArrowDown' ? 1 : -1))); renderSnapshots(); $(`#snap-list button[data-i="${selected}"]`).focus(); }
+    if (e.key === 'Enter') { e.preventDefault(); requestRestore(snapshots[selected][1]); }
+  });
+  $('#snap-restore').addEventListener('click', () => requestRestore(snapshots[selected][1]));
+  $('#snap-refresh').addEventListener('click', () => { renderSnapshots(); toast('Preview: list reloaded from the Snapshots folder'); });
+  $('#snap-preview').addEventListener('click', () => {
+    const n = snapshots[selected][1];
+    $('#snap-detail').innerHTML = `<pre>Dry run: ${n} tab(s) would be rebuilt.
+
+wt.exe -w "tskrestore 11:42" new-tab --title "claude: Settings save model" wsl.exe -d Ubuntu --cd /home/alexanderyazemov/source/alexlvcom
+wt.exe -w "tskrestore 11:42" new-tab --title "KeyFlip build" -d C:\\projects\\KeyFlip pwsh.exe
+wt.exe -w "tskrestore 11:42" new-tab --title "codex: tunella sync" wsl.exe -d Ubuntu --cd /home/alexanderyazemov/source/sites/tunella-web
+wt.exe -w "tskrestore 11:42" new-tab --title "opcart" wsl.exe -d Ubuntu --cd /home/alexanderyazemov/source/opcart
+…</pre>`;
+  });
+  $('#sim-empty').addEventListener('change', () => { if ($('#screen-snapshots').classList.contains('active')) renderSnapshots(); });
+
+  document.addEventListener('click', e => {
+    const ok = e.target.closest('[data-preview-ok]');
+    if (ok && !e.defaultPrevented) {}
+  });
+
+  // Deep links for review: #screen=settings&tab=p-updates&theme=dark&open=dlg-update&menu=1
+  // Runs after the foundation's own DOMContentLoaded setup, which resets the theme to System.
+  document.addEventListener('DOMContentLoaded', () => {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    showScreen(hash.get('screen') || 'tray');
+    if (hash.get('theme')) { savedTheme = draftTheme = hash.get('theme'); setHarnessTheme(savedTheme); }
+    if (hash.get('tab')) selectTab(hash.get('tab'));
+    if (hash.get('menu')) { menu.classList.add('open'); trayIcon.setAttribute('aria-expanded', 'true'); }
+    if (hash.get('open')) openModal(hash.get('open'));
+  });
+})();
+</script>
+</body>
+</html>

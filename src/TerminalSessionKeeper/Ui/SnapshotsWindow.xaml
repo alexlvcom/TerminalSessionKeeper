@@ -1,0 +1,49 @@
+<ui:ThemedWindow x:Class="TerminalSessionKeeper.Ui.SnapshotsWindow"
+        xmlns:ui="clr-namespace:AlexLV.WindowsUi"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource KitWindow}"
+        Width="960" Height="620" MinWidth="720" MinHeight="460" WindowStartupLocation="CenterScreen" ShowInTaskbar="True">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Style="{StaticResource Footer}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button x:Name="PreviewButton" Content="Preview restore" Click="Preview_Click"/>
+          <Button x:Name="RestoreButton" Content="Restore this one" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="Restore_Click"/>
+          <Button x:Name="CloseButton" Content="Close" Margin="8,0,0,0" IsCancel="True" Click="Close_Click"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal">
+          <Button Content="Open folder" Click="OpenFolder_Click"/>
+          <Button Content="Copy" Margin="8,0,0,0" Click="Copy_Click"/>
+          <Button Content="Refresh" Margin="8,0,0,0" Click="Refresh_Click"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <Grid Margin="20,16">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" MinWidth="260"/>
+        <ColumnDefinition Width="16"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Text="SAVED SNAPSHOTS" Style="{StaticResource SectionHeader}"/>
+        <Border Style="{StaticResource Card}">
+          <ListBox x:Name="List" BorderThickness="0" Background="Transparent"
+                   FontFamily="{StaticResource MonoFont}" FontSize="13"
+                   SelectionChanged="List_SelectionChanged" MouseDoubleClick="List_DoubleClick" KeyDown="List_KeyDown"/>
+        </Border>
+      </DockPanel>
+
+      <DockPanel Grid.Column="2">
+        <TextBlock DockPanel.Dock="Top" x:Name="DetailHeader" Text="DETAILS" Style="{StaticResource SectionHeader}"/>
+        <Border Style="{StaticResource Card}">
+          <TextBox x:Name="Detail" IsReadOnly="True" BorderThickness="0" Background="Transparent" IsTabStop="False"
+                   FontFamily="{StaticResource MonoFont}" FontSize="13" TextWrapping="NoWrap" VerticalContentAlignment="Stretch"
+                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="12,10"/>
+        </Border>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</ui:ThemedWindow>

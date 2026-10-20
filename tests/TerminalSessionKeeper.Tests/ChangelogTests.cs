@@ -12,9 +12,11 @@ public class ChangelogTests
         var csproj = FindCsproj();
         var text = File.ReadAllText(csproj);
 
-        var prefix = Regex.Match(text, @"<VersionPrefix>([^<]+)</VersionPrefix>").Groups[1].Value;
+        var version = Regex.Match(text, @"<Version>([^<]+)</Version>").Groups[1].Value;
 
-        Assert.Equal(prefix, Changelog.MarketingVersion);
+        Assert.Equal(version, Changelog.MarketingVersion);
+        Assert.Equal(version, Changelog.Entries[0].Version);
+        Assert.NotNull(Changelog.Current);
     }
 
     [Fact]

@@ -4,11 +4,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- WinForms hosts the tray icon and the message loop; every window is WPF with the shared
+         AlexLV.WindowsUi kit (see AlexLV.WindowsUi in C:\projects and AGENTS.md). -->
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- Tab titles are readable only through UI Automation, and System.Windows.Automation
-         ships in the WPF framework reference. The COM IUIAutomation interfaces would avoid
-         it, but hand-declared vtables are a crash away from a wrong slot; the managed
-         wrapper is the one the reference implementation proved on this machine. -->
+    <!-- WPF draws the windows. Tab titles are also readable only through UI Automation, and
+         System.Windows.Automation ships in the WPF framework reference. The COM IUIAutomation
+         interfaces would avoid it, but hand-declared vtables are a crash away from a wrong slot;
+         the managed wrapper is the one the reference implementation proved on this machine. -->
     <UseWPF>true</UseWPF>
     <!-- Tab colours are read by rendering the terminal and sampling the pixels under each tab's
          UI Automation rectangle. A system-aware process gets those rectangles scaled whenever
@@ -23,11 +25,10 @@
     <RootNamespace>TerminalSessionKeeper</RootNamespace>
     <AssemblyName>TerminalSessionKeeper</AssemblyName>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-    <VersionPrefix>1.3.2</VersionPrefix>
-    <Version>1.3.2</Version>
-    <InformationalVersion>1.3.2</InformationalVersion>
-    <FileVersion>1.3.2.0</FileVersion>
-    <AssemblyVersion>1.3.2.0</AssemblyVersion>
+    <Version>1.4.0</Version>
+    <InformationalVersion>1.4.0</InformationalVersion>
+    <FileVersion>1.4.0.0</FileVersion>
+    <AssemblyVersion>1.4.0.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- The name people read. The assembly, the folder and the Run-key value stay one word;
          see AppInfo.cs. -->
@@ -43,7 +44,9 @@
          workstation GC keeps the resident set and background threads minimal. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- WPF text layout creates real cultures (for example "en") when it measures fonts; invariant
+         globalization makes the first TextBox throw and crash the app. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
 
     <!-- SQLite ships as a native library. A single-file publish leaves native libraries beside
          the executable unless this is set, and the app is meant to be one file you can copy
@@ -58,9 +61,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The WinForms implicit-using set replaces the SDK default rather than adding to it, and
-         drops System.IO with it. Nearly everything here touches the file system. -->
+    <!-- WinForms and WPF share type names (Button, TextBox, Application, MessageBox); files opt
+         in to WinForms and System.Drawing explicitly instead of through implicit usings. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <!-- The WinForms and WPF implicit-using sets drop these. Nearly everything here touches the
+         file system. -->
     <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>

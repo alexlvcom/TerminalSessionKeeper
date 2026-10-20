@@ -69,7 +69,7 @@ public sealed class UpdateService : IDisposable
         return new AppUpdate(version, installer, checksums, digest);
     }
 
-    public async Task<string> DownloadAsync(AppUpdate update, string cacheRoot, CancellationToken cancellationToken)
+    public async Task<string> DownloadAsync(AppUpdate update, string cacheRoot, CancellationToken cancellationToken, IProgress<(long Received, long? Total)>? progress = null)
     {
         var expected = update.Sha256;
         if (expected is null)
@@ -90,6 +90,7 @@ public sealed class UpdateService : IDisposable
             using var response = await _http.GetAsync(update.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > MaxDownloadBytes) throw new InvalidDataException("Installer is too large.");
+            var length = response.Content.Headers.ContentLength;
             await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken))
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
             {
@@ -101,6 +102,7 @@ public sealed class UpdateService : IDisposable
                     total += count;
                     if (total > MaxDownloadBytes) throw new InvalidDataException("Installer is too large.");
                     await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                    progress?.Report((total, length));
                 }
             }
             await using var file = File.OpenRead(path);
