@@ -4,20 +4,23 @@ using AlexLV.WindowsUi;
 
 namespace TerminalSessionKeeper.Ui;
 
-/// <summary>Current-version highlights, acknowledged locally only after rendering.</summary>
+/// <summary>
+/// Highlights acknowledged locally only after rendering: every release since <c>previous</c>, or
+/// only the current one on a fresh installation.
+/// </summary>
 public partial class WhatsNewWindow : ThemedWindow
 {
-    public WhatsNewWindow()
+    public WhatsNewWindow(Version? previous = null)
     {
         InitializeComponent();
         Title = $"{AppInfo.DisplayName} What's New";
         TitleVersion = $"v{Changelog.MarketingVersion}";
         Heading.Text = $"What’s new in {AppInfo.DisplayName} {Changelog.MarketingVersion}";
-        var entry = Changelog.Current;
-        var main = entry?.Sections.Where(s => string.Equals(s.Heading, "Main changes", StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (entry is not null && main is { Length: > 0 })
-            entry = new ChangelogEntry(entry.Version, entry.Date, main);
-        ReleaseNotesView.Fill(Changes, entry);
+        if (previous is not null) Subtitle.Text = $"Here’s what changed since v{previous.Major}.{previous.Minor}.{Math.Max(previous.Build, 0)}.";
+        var releases = Changelog.MainChangesSince(previous, Changelog.MarketingVersion);
+        if (releases.Length == 0) ReleaseNotesView.Fill(Changes, null);
+        else if (previous is null) ReleaseNotesView.Fill(Changes, releases[0]);
+        else foreach (var release in releases) ReleaseNotesView.Fill(Changes, release, withVersionHeading: true);
         Loaded += (_, _) => ContinueButton.Focus();
     }
 
@@ -38,7 +41,7 @@ public partial class WhatsNewWindow : ThemedWindow
         if (!state.ShouldShow(Changelog.MarketingVersion)) return;
         try
         {
-            var window = new WhatsNewWindow { Owner = owner };
+            var window = new WhatsNewWindow(state.PreviousRelease()) { Owner = owner };
             var recorded = false;
             window.ContentRendered += (_, _) =>
             {

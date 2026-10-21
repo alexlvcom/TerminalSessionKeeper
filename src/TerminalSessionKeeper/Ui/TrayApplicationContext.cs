@@ -47,7 +47,8 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly CancellationTokenSource _updateCancellation = new();
     private readonly System.Windows.Forms.Timer _updateTimer = new();
     private DateTime _nextUpdateCheckUtc = DateTime.MaxValue;
-    private bool _checkingUpdate;
+    private readonly SharedCheck<AppUpdate?> _updateCheck = new();
+    private UpdateWindow? _updateWindow;
     private Version? _lastOfferedUpdate;
 
     /// <summary>True while a snapshot or a restore is running, or a dialog is open.</summary>
@@ -475,23 +476,20 @@ public sealed class TrayApplicationContext : ApplicationContext
     /// <summary>
     /// Checks GitHub. Manual checks come from Settings → Updates, which shows the returned status in
     /// place; only a newer release opens a dialog. Automatic checks stay quiet unless they offer an update.
+    /// A manual check that arrives while another is in flight joins it and reports its result.
     /// </summary>
     private async Task<UpdateStatus> CheckForUpdatesAsync(bool manual)
     {
         var current = Changelog.MarketingVersion;
-        if (_checkingUpdate) return new UpdateStatus(UpdateState.Checking, "Checking for updates…", "A check is already running");
+        if (!manual && _updateCheck.IsRunning) return new UpdateStatus(UpdateState.Checking, "Checking for updates…", "A check is already running");
         if (!manual && _settings.CheckFrequency == UpdateCheckFrequency.Never)
         {
             return new UpdateStatus(UpdateState.NotChecked, "Automatic checks are off", $"Version {current}");
         }
 
-        _checkingUpdate = true;
         try
         {
-            var update = await _updates.CheckAsync(Version.Parse(current), _updateCancellation.Token);
-            RecordUpdateCheck(update is null ? UpdateCheckOutcome.Current : UpdateCheckOutcome.Available,
-                update?.Version.ToString(3), failure: null);
-
+            var update = await _updateCheck.RunAsync(() => RunUpdateCheckAsync(current));
             if (update is null) return UpdateStatus.Latest(current, DateTime.Now);
 
             var available = UpdateStatus.Available(current, update.Version.ToString(3), DateTime.Now);
@@ -506,11 +504,26 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            _log.Error("Update check failed.", ex);
-            RecordUpdateCheck(UpdateCheckOutcome.Failed, availableVersion: null, ex.Message);
             return UpdateStatus.Failed(current, ex.Message);
         }
-        finally { _checkingUpdate = false; }
+    }
+
+    /// <summary>The network check itself, shared by every caller while it runs; the offer is shown outside it.</summary>
+    private async Task<AppUpdate?> RunUpdateCheckAsync(string current)
+    {
+        try
+        {
+            var update = await _updates.CheckAsync(Version.Parse(current), _updateCancellation.Token);
+            RecordUpdateCheck(update is null ? UpdateCheckOutcome.Current : UpdateCheckOutcome.Available,
+                update?.Version.ToString(3), failure: null);
+            return update;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.Error("Update check failed.", ex);
+            RecordUpdateCheck(UpdateCheckOutcome.Failed, availableVersion: null, ex.Message);
+            throw;
+        }
     }
 
     /// <summary>Keeps what a completed check found, so Settings → Updates can show it when it next opens.</summary>
@@ -525,16 +538,20 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void ShowUpdateDialog(AppUpdate update)
     {
-        var wasBusy = _busy;
-        _busy = true;
-        try
+        // An open offer refreshes to the latest release when Update is clicked, so bring it
+        // forward instead of stacking another.
+        if (_updateWindow is { } open)
         {
-            new UpdateWindow(update, _updates, _updateCancellation.Token).ShowDialog();
+            WinFormsHosting.ShowModeless(open);
+            return;
         }
-        finally
-        {
-            _busy = wasBusy;
-        }
+
+        var window = new UpdateWindow(update, _updates, _updateCancellation.Token);
+        if (_settingsWindow is { IsVisible: true } owner) window.Owner = owner;
+        window.Closed += (_, _) => { if (ReferenceEquals(_updateWindow, window)) _updateWindow = null; };
+        _updateWindow = window;
+        // Modeless, so an unanswered offer never blocks later checks.
+        WinFormsHosting.ShowModeless(window);
     }
 
     private void ExitApplication()
@@ -543,6 +560,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _snapshotTimer.Stop();
         _notifyIcon.Visible = false;
         _settingsWindow?.Close();
+        _updateWindow?.Close();
         _snapshotsWindow?.Close();
         ExitThread();
     }

@@ -18,7 +18,9 @@ to save their current location accurately.
 
 Clicking **Update** checks the latest stable release again before downloading, so a prompt left open skips any superseded versions. The installer URL and SHA-256 both come from that fresh check. If the check fails, the app stops and reports the error instead of installing the old offer.
 
-After installation or an upgrade, **What’s New** shows the running version’s main changes from the bundled changelog, with **Got it** and **View full change history**. It remembers the shown version on this PC, so normal restarts stay quiet.
+After installation or an upgrade, **What’s New** shows the main changes from the bundled changelog, with **Got it** and **View full change history**. An upgrade that skipped releases lists every release since the version you last ran, newest first. It remembers the shown version on this PC, so normal restarts stay quiet.
+
+**Check for updates** always reports a result: if an automatic check is already running, it waits for that check instead of refusing. The Update/Later offer does not block other windows, and a later check brings an open offer forward.
 
 ## Features
 

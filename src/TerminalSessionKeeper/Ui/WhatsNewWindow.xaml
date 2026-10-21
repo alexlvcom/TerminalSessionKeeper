@@ -15,7 +15,7 @@
     <Grid Margin="28,24">
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <TextBlock x:Name="Heading" FontSize="26" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-      <TextBlock Grid.Row="1" Text="Here’s what changed in this release." Style="{StaticResource MutedText}" Margin="0,6,0,22"/>
+      <TextBlock Grid.Row="1" x:Name="Subtitle" TextWrapping="Wrap" Text="Here’s what changed in this release." Style="{StaticResource MutedText}" Margin="0,6,0,22"/>
       <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
         <StackPanel x:Name="Changes" TextElement.Foreground="{DynamicResource Text}"/>
       </ScrollViewer>

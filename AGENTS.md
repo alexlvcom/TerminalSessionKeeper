@@ -22,7 +22,7 @@
 
 ## GitHub updates
 
-- Default to checking immediately on startup and daily while running. Settings must support hourly, daily, weekly, calendar-monthly, and never. Never disables startup and scheduled checks while leaving manual checks available. Keep checks asynchronous and prevent overlapping checks or downloads.
+- Default to checking immediately on startup and daily while running. Settings must support hourly, daily, weekly, calendar-monthly, and never. Never disables startup and scheduled checks while leaving manual checks available. Keep checks asynchronous and prevent overlapping network checks or downloads; a manual check joins one already in flight.
 - Offer Update/Later for a newer stable release with `TerminalSessionKeeper-Setup.exe`. Download only after Update is clicked. Verify the GitHub SHA-256 digest or published `SHA256SUMS.txt` before launching setup.
 - Keep background failures quiet. Manual Check for updates lives on the Settings Updates tab, reporting results to the user.
 - Run tests with `dotnet test tests/TerminalSessionKeeper.Tests/TerminalSessionKeeper.Tests.csproj -c Release`.
@@ -53,4 +53,6 @@
 - Follow the canonical desktop standards at `~/sites/alexlv.com/docs/windows-apps-common-standards.md` in WSL, discoverable through the `alexlv-apps` (My Apps) skill. Its published copy is `public/docs/windows-apps-common-standards.md` in that project; keep both identical when changing a shared convention.
 - Every Update click and retry must refresh the latest authorized stable release before downloading, skipping superseded offers and using the refreshed URL and matching SHA-256. A failed refresh or withdrawn offer must stop; never fall back to an older installer.
 - Show What’s New once per PC after installation or upgrade, using the running version’s embedded changelog Main changes, with Got it and full history. Acknowledge only after rendering; normal restarts and downgrades stay quiet. Keep acknowledgement separate from synced settings. Locked apps show it after successful unlock.
+- After an upgrade, What’s New lists the Main changes of every release since the previously acknowledged version, newest first; a fresh install shows only the running release. Upgrades from releases without an acknowledgement record infer the previous version from existing settings.
+- A manual update check always returns a real result: it joins a background check in flight instead of refusing. The non-overlap guard covers only the network request; the Update/Later offer is modeless, and a later check brings an open offer forward.
 - Retain regression coverage for a feed advancing while an offer is open, refresh failure, matching installer/checksum selection, and release acknowledgement. Verify the window’s wrapping, keyboard dismissal, and installed version before delivery.

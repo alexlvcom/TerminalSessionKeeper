@@ -2,6 +2,13 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## 1.4.2 - 2026-10-21
+
+### Main changes
+
+- Check for updates in Settings no longer gets stuck on "A check is already running" while an update offer from an automatic check is still open. It now waits for a check in progress and shows its result, and the offer no longer blocks other windows.
+- After an upgrade that skipped releases, What’s New lists the main changes of every release since the version you last ran, newest first.
+
 ## 1.4.1 - 2026-10-20
 
 ### Main changes
