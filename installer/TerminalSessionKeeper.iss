@@ -23,6 +23,8 @@ UninstallDisplayIcon={app}\TerminalSessionKeeper.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+WizardImageFile=images\wizard-164x314.bmp,images\wizard-192x386.bmp,images\wizard-246x459.bmp,images\wizard-273x556.bmp,images\wizard-328x604.bmp,images\wizard-355x700.bmp,images\wizard-410x797.bmp
+WizardSmallImageFile=images\wizard-small-55x55.bmp,images\wizard-small-64x68.bmp,images\wizard-small-83x80.bmp,images\wizard-small-92x97.bmp,images\wizard-small-110x106.bmp,images\wizard-small-119x123.bmp,images\wizard-small-138x140.bmp
 CloseApplications=yes
 RestartApplications=no
 

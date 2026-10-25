@@ -11,7 +11,12 @@ dotnet publish src\TerminalSessionKeeper\TerminalSessionKeeper.csproj `
     -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
 ```
 
-That produces the same single `publish\TerminalSessionKeeper.exe` the releases ship.
+That produces the single `publish\TerminalSessionKeeper.exe` that the installer packages.
+
+Releases ship the Inno Setup installer: `scripts\build-installer.ps1` (needs Inno Setup 6)
+builds `dist\TerminalSessionKeeper-Setup.exe` and `dist\SHA256SUMS.txt` from `installer\TerminalSessionKeeper.iss`.
+The wizard logo bitmaps in `installer\images` are generated from the app icon by
+`scripts\generate-installer-images.ps1`; rerun it after changing `Resources\app.ico`.
 
 ## Project layout
 

@@ -2,6 +2,12 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## 1.4.3 - 2026-10-25
+
+### Other updates
+
+- The setup wizard now shows the Terminal Session Keeper logo on its welcome, finish and page headers instead of the default Inno Setup artwork.
+
 ## 1.4.2 - 2026-10-21
 
 ### Main changes
