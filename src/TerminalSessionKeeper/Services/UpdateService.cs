@@ -22,7 +22,7 @@ public sealed class UpdateService : IDisposable
 
     public UpdateService(HttpMessageHandler? handler = null)
     {
-        _http = handler is null ? new HttpClient() : new HttpClient(handler);
+        _http = handler is null ? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) }) : new HttpClient(handler);
         _http.Timeout = TimeSpan.FromMinutes(10);
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("TerminalSessionKeeper-Updater/1.0");
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");

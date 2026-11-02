@@ -46,7 +46,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly UpdateService _updates = new();
     private readonly CancellationTokenSource _updateCancellation = new();
     private readonly System.Windows.Forms.Timer _updateTimer = new();
-    private DateTime _nextUpdateCheckUtc = DateTime.MaxValue;
+    private DateTime _updateRetryAfterUtc;
     private readonly SharedCheck<AppUpdate?> _updateCheck = new();
     private UpdateWindow? _updateWindow;
     private Version? _lastOfferedUpdate;
@@ -138,14 +138,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         _shutdownListener.Show();
         WhatsNewWindow.Schedule();
 
-        _updateTimer.Interval = (int)TimeSpan.FromMinutes(15).TotalMilliseconds;
+        _updateTimer.Interval = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
         _updateTimer.Tick += async (_, _) =>
         {
-            if (DateTime.UtcNow >= _nextUpdateCheckUtc)
-            {
-                await CheckForUpdatesAsync(manual: false);
-                _nextUpdateCheckUtc = UpdateSchedule.NextCheck(DateTime.UtcNow, _settings.CheckFrequency);
-            }
+            if (UpdateDue()) await CheckForUpdatesAsync(manual: false);
         };
 
         ApplyUpdateSchedule();
@@ -330,6 +326,8 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         _settings = settings;
         ApplyUpdateSchedule();
+        // Saving never pushes the next check out: run it now if it is already due.
+        if (UpdateDue()) _ = CheckForUpdatesAsync(manual: false);
 
         _snapshotTimer.Enabled = false;
         _snapshotTimer.Interval = (int)_settings.SnapshotInterval.TotalMilliseconds;
@@ -469,9 +467,12 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         _settings.CheckFrequency = UpdateSchedule.Normalize(_settings.CheckFrequency);
         _updateTimer.Stop();
-        _nextUpdateCheckUtc = UpdateSchedule.NextCheck(DateTime.UtcNow, _settings.CheckFrequency);
         if (_settings.CheckFrequency != UpdateCheckFrequency.Never) _updateTimer.Start();
     }
+
+    private bool UpdateDue() =>
+        !_updateCheck.IsRunning && DateTime.UtcNow >= _updateRetryAfterUtc
+        && UpdateSchedule.IsDue(_settings.CheckFrequency, _settings.LastUpdateCheckUtc, DateTime.UtcNow);
 
     /// <summary>
     /// Checks GitHub. Manual checks come from Settings → Updates, which shows the returned status in
@@ -511,6 +512,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     /// <summary>The network check itself, shared by every caller while it runs; the offer is shown outside it.</summary>
     private async Task<AppUpdate?> RunUpdateCheckAsync(string current)
     {
+        var previousCheck = _settings.LastUpdateCheckUtc;
         try
         {
             var update = await _updates.CheckAsync(Version.Parse(current), _updateCancellation.Token);
@@ -522,6 +524,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             _log.Error("Update check failed.", ex);
             RecordUpdateCheck(UpdateCheckOutcome.Failed, availableVersion: null, ex.Message);
+            // A failed check (for example the network is not back yet after sleep) must not silence updates for a whole period.
+            _settings.LastUpdateCheckUtc = previousCheck;
+            _updateRetryAfterUtc = DateTime.UtcNow.AddMinutes(10);
+            _settingsStore.Save(_settings);
             throw;
         }
     }
@@ -547,7 +553,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
 
         var window = new UpdateWindow(update, _updates, _updateCancellation.Token);
-        if (_settingsWindow is { IsVisible: true } owner) window.Owner = owner;
+        // No owner: closing Settings must never silently close an unanswered offer.
         window.Closed += (_, _) => { if (ReferenceEquals(_updateWindow, window)) _updateWindow = null; };
         _updateWindow = window;
         // Modeless, so an unanswered offer never blocks later checks.
