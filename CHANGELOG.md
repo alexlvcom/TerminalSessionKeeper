@@ -2,6 +2,12 @@
 
 All notable changes to Terminal Session Keeper are documented here. Format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## 1.4.4 - 2026-11-03
+
+### Main changes
+
+- Fix automatic update checks: reliable 1-minute scheduling, retry after failed checks, visible update offer.
+
 ## 1.4.3 - 2026-10-25
 
 ### Other updates
