@@ -56,3 +56,9 @@
 - After an upgrade, What’s New lists the Main changes of every release since the previously acknowledged version, newest first; a fresh install shows only the running release. Upgrades from releases without an acknowledgement record infer the previous version from existing settings.
 - A manual update check always returns a real result: it joins a background check in flight instead of refusing. The non-overlap guard covers only the network request; the Update/Later offer is modeless, and a later check brings an open offer forward.
 - Retain regression coverage for a feed advancing while an offer is open, refresh failure, matching installer/checksum selection, and release acknowledgement. Verify the window’s wrapping, keyboard dismissal, and installed version before delivery.
+
+## Third-Party Accounts And Setups
+
+When adding, changing, or removing a third-party service, integration, account, project, billing arrangement, or provider setup for this project, update the private AlexLV app directory in the same task. Update the relevant app entry's `details.third_party` in `public/apps.json` and the matching section in `public/docs/third-party-accounts.md`. For a project without an app card, update the inventory document without adding a card unless requested. Include the provider, purpose, environment, project or account identity, and relevant billing details when known. Remove or correct obsolete details and distinguish confirmed facts from information that could not be verified. Never put passwords, API keys, tokens, private keys, or other secrets in the directory, Git, or logs.
+
+The directory checkout is `~/sites/alexlv.com` on the home PC or `~/source/alexlvcom` on the work laptop. Follow its `AGENTS.md`, deploy changes to the configured DEV site, and verify the updated protected page and document before reporting the task complete. Include the directory repository in the session's final Git sweep.
