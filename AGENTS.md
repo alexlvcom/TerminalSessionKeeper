@@ -8,6 +8,14 @@
 - Do not include commit hashes, source revision IDs, or other unique build identifiers in the About window version.
 - Never put the version in a window title. Set `TitleVersion` (e.g. `v1.4.0`) on the window instead: the kit draws it right-aligned in the title row, without brackets. On Settings and main windows clicking it opens Updates; update dialogs show it as plain text. Small update-result popups keep the version only in their message.
 
+## Start From The Latest Code
+
+- Before any change, run `git fetch --tags` and `git pull --ff-only` on the working branch and build on top of the result. Other machines and agent sessions push commits, tags, and releases, so never edit, build, version, install, or deploy a stale checkout.
+- Choose a new version only after comparing it with the latest remote tags and releases; never reuse a released version or build one older than the published release.
+- Fetch again before building, installing, committing, or pushing. If the remote moved, pull and rebuild first.
+- If the pull cannot fast-forward, stop and report it. Do not continue on old code, and do not force-push.
+- Shared standard: "Start From The Latest Code" in the AlexLV app standards (`docs/windows-apps-common-standards.md` and `docs/mobile-apps-common-standards.md` in alexlv.com).
+
 ## Installer and local deployment
 
 - Build the Windows installer with `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& 'E:\projects\TerminalSessionKeeper\scripts\build-installer.ps1'"` on Windows. Requires .NET 8 SDK and Inno Setup 6.
